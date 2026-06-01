@@ -11,6 +11,7 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 | [03 — Identity](docs/03-identity.md) | IdP choice (Entra/Okta/Ping/Cognito), OAuth Client Credentials for partners, mTLS for internal services, Auth Code+PKCE for users, JWKS caching, backend identity propagation |
 | [04 — CI/CD](docs/04-cicd.md) | Spec → policy → publish pipeline; GitHub Actions + Anypoint CLI; dev/stg auto + prd manual gate; drift cleanup; rollback |
 | [05 — Observability](docs/05-observability.md) | SLO set, metrics catalog, dashboards, access-log schema (PII-safe), W3C tracing end-to-end, Splunk HEC + Datadog wiring, alert matrix with runbooks |
+| [06 — Azure-Resident Private Space (US Central)](docs/06-azure-private-space.md) | Azure-hosted data plane in centralus, ExpressRoute Private Peering, VNet peering, vWAN options, AWS-vs-Azure gotchas, what to verify with MuleSoft sales |
 
 ## Conventions
 
