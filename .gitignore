@@ -1,0 +1,36 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Anypoint Studio
+.mule/
+*.classpath
+*.project
+.settings/
+.metadata/
+
+# Maven
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# Mule application packaging
+*.jar
+*.zip
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+secrets/
+mule-artifact.local.json
+
+# Logs
+logs/
+*.log
