@@ -162,13 +162,15 @@ You asked for both sides. Here's the honest comparison.
 - **Centralized analytics + audit.** Anypoint Monitoring out of the box; tamper-resistant audit log in the SaaS control plane.
 - **Consistent runtime versions.** Everyone is on the same patch level — no fragmentation.
 - **Predictable OpEx** — license + private connectivity costs, no surprise hardware refresh.
+- **Citizen / PII data — inherited compliance posture.** MuleSoft holds SOC 2 Type II, ISO 27001, and FedRAMP Moderate. DPA + BAA available on request. Matching that audit posture independently would cost ~$500K/yr for a small team. See [07 — Data Protection](07-data-protection.md) for the full lens.
 
 **Cons**
-- **Data plane runs in MuleSoft-managed AWS** (typically `us-east-1`, `eu-west-1`, etc.). Your data transits MuleSoft's VPC, even if private. May matter for **data sovereignty / residency** regulations.
+- **Data plane runs in MuleSoft-managed cloud** (AWS or Azure; for this design, Azure `centralus` — see [06](06-azure-private-space.md)). Your data transits MuleSoft's subscription, even if private. May matter for **data sovereignty / residency** regulations.
 - **Less customization** at the OS / JVM level. You can't sidecar arbitrary processes.
 - **Outbound dependency on Anypoint Control Plane.** If `anypoint.mulesoft.com` is unreachable for an extended period, you can still serve traffic (policies cached) but can't change anything until it recovers.
-- **Egress costs to your on-prem.** Private connectivity (Transit Gateway / Direct Connect) is metered AWS data transfer.
+- **Egress costs to your on-prem.** Private connectivity (ExpressRoute / Transit Gateway) is metered.
 - **Cost compounds at higher TPS** — at very high volumes (millions/day) the per-call/vCore SaaS pricing can outrun an amortized on-prem cluster.
+- **Citizen / PII data — MuleSoft personnel have privileged access** to runtime infrastructure. You manage this contractually (DPA), not technically. Memory dumps during their incident response can expose in-flight request bodies. Audit-log gap for MuleSoft operator actions (SOC 2 attestation is the only assurance). CLOUD Act applies — fine for US-citizen data on US infrastructure; potentially blocking for non-US-citizen data with cross-border restrictions. See [07 — Data Protection](07-data-protection.md) for residual-risk analysis and the mandatory controls bundle.
 
 ### Anypoint Flex Gateway — On-prem (in your DC / your K8s)
 
@@ -186,17 +188,17 @@ You asked for both sides. Here's the honest comparison.
 - **Capacity overhead.** Have to provision for peak; can't scale to zero overnight.
 - **More expensive at low volume.** Two replicas, monitoring, plus a sysadmin to keep them alive — for 100K/day this is overkill.
 
-### Decision matrix for your case (100K/day, MS stack downstream)
+### Decision matrix for your case (100K/day, MS stack downstream, **citizen data**)
 
 | Factor | Score |
 |---|---|
 | 100K/day volume — too small to justify on-prem ops overhead | → **SaaS** |
 | MS stack already handles the heavy data path | → SaaS is fine (gateway role only) |
 | Private connectivity requirement is solvable in SaaS (§5) | → **SaaS** |
-| No mention of data residency / sovereignty constraints | → **SaaS** |
 | New gateway program — no legacy gateway investment | → **SaaS** |
+| **Citizen / PII data in scope** | → **SaaS viable WITH controls** — see [07](07-data-protection.md). Reject SaaS only if your sovereignty/sensitivity regime forbids any US-jurisdiction processor access. |
 
-**Recommendation: SaaS** (Connected mode, CloudHub 2.0 Private Space). Revisit at >5M calls/day or if a data-residency requirement surfaces.
+**Recommendation: SaaS** (Connected mode, CloudHub 2.0 Private Space), **subject to the controls bundle in [07 — Data Protection](07-data-protection.md)**. Revisit at >5M calls/day, or if regulatory regime tightens (e.g. data classified above SOC 2 / FedRAMP Moderate, or non-US-citizen data with cross-border restrictions).
 
 ---
 

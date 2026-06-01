@@ -176,8 +176,12 @@ JSON only. One log line per request. Schema:
 - Response body
 - Cookies / session tokens
 - Customer PII (email, name, account numbers) — even hashed; hash collisions + correlation attacks make this risky in long-term storage
+- **Path segments containing citizen IDs** — e.g. `/citizens/123-45-6789` must be tokenized to `/citizens/{id}` before the log line is shipped
+- **Query parameters of any kind on citizen APIs** — strip in the log shipper, even if the OAS says it's safe (defense in depth)
 
-**Do log:** trace IDs, client identifiers, sizes, durations, policy decisions. Enough for a "what happened to this request" investigation without leaking content.
+**Do log:** trace IDs, client identifiers (the API caller, NOT the citizen), sizes, durations, policy decisions. Enough for a "what happened to this request" investigation without leaking content.
+
+> **Citizen-data-bearing APIs require additional controls beyond this section.** See [07 — Data Protection](07-data-protection.md) for the full PII-handling treatment: path tokenization, trace span attribute deny-lists, metric cardinality limits, memory-dump policy with MuleSoft, DPA/BAA requirements, and the pre-go-live security checklist.
 
 ### Log retention
 
