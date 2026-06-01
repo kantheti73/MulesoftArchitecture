@@ -13,6 +13,7 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 | [05 — Observability](docs/05-observability.md) | SLO set, metrics catalog, dashboards, access-log schema (PII-safe), W3C tracing end-to-end, Splunk HEC + Datadog wiring, alert matrix with runbooks |
 | [06 — Azure-Resident Private Space (US Central)](docs/06-azure-private-space.md) | Azure-hosted data plane in centralus, ExpressRoute Private Peering, VNet peering, vWAN options, AWS-vs-Azure gotchas, what to verify with MuleSoft sales |
 | [07 — Data Protection (Citizen Data on SaaS)](docs/07-data-protection.md) | 12 data-bleed vectors with mitigations, cloud-specific exposure surfaces, compliance landscape (HIPAA/GDPR/CCPA/FedRAMP), shared responsibility matrix, mandatory controls bundle, memory-dump policy with MuleSoft, residual risks, pre-go-live security checklist |
+| [08 — Flex Gateway Deep-Dive](docs/08-flex-gateway.md) | Product-level honest evaluation: Envoy core, performance numbers, high points (architecture/perf/ops/cost/cloud-native), low points (maturity, capability gaps, custom WASM burden, lock-in, license floor), comparison vs Kong/Apigee/AWS/Azure/Mule runtime, verification checklist before committing |
 
 ## Conventions
 
