@@ -15,6 +15,14 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 | [07 — Data Protection (Citizen Data on SaaS)](docs/07-data-protection.md) | 12 data-bleed vectors with mitigations, cloud-specific exposure surfaces, compliance landscape (HIPAA/GDPR/CCPA/FedRAMP), shared responsibility matrix, mandatory controls bundle, memory-dump policy with MuleSoft, residual risks, pre-go-live security checklist |
 | [08 — Flex Gateway Deep-Dive](docs/08-flex-gateway.md) | Product-level honest evaluation: Envoy core, performance numbers, high points (architecture/perf/ops/cost/cloud-native), low points (maturity, capability gaps, custom WASM burden, lock-in, license floor), comparison vs Kong/Apigee/AWS/Azure/Mule runtime, verification checklist before committing |
 
+## Presentations
+
+| File | What it covers |
+|---|---|
+| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | 9-slide executive/architect deck: synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · capacity planning · Azure vs AWS native private spaces · risks & next steps |
+| [presentations/build_pptx.py](presentations/build_pptx.py) | Reproducible generator — regenerate the deck with `python presentations/build_pptx.py` after editing |
+| [presentations/diagrams/mulesoft_architecture.py](presentations/diagrams/mulesoft_architecture.py) | Generates the architecture PNG embedded in the deck (run before `build_pptx.py` if the diagram source changes) |
+
 ## Conventions
 
 - **API specs:** OAS 3.x in Anypoint Exchange, published from this Git repo via CI.
