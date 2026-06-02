@@ -19,7 +19,7 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 
 | File | What it covers |
 |---|---|
-| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | 9-slide executive/architect deck: synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · capacity planning · Azure vs AWS native private spaces · risks & next steps |
+| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | 10-slide executive/architect deck: title · synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · capacity planning · Azure vs AWS Private Spaces · on-prem deployment · risks & next steps |
 | [presentations/build_pptx.py](presentations/build_pptx.py) | Reproducible generator — regenerate the deck with `python presentations/build_pptx.py` after editing |
 | [presentations/diagrams/mulesoft_architecture.py](presentations/diagrams/mulesoft_architecture.py) | Generates the architecture PNG embedded in the deck (run before `build_pptx.py` if the diagram source changes) |
 

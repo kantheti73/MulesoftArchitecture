@@ -426,6 +426,76 @@ def slide_azure_vs_aws(prs):
     return s
 
 
+def slide_onprem(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_header(s, "On-prem deployment — when SaaS isn't viable",
+               "Same Flex Gateway binary, your data center, your operational responsibility")
+
+    add_text(s,
+             "On-prem keeps every byte of citizen data inside your perimeter and removes MuleSoft personnel access from the data plane entirely. The trade-off is that you inherit all operational responsibility — patching, scaling, HA, monitoring, incident response — that the SaaS path would otherwise absorb.",
+             Inches(0.5), Inches(1.40), Inches(12.4), Inches(0.75),
+             font_size=12, color=DARK)
+
+    # ----- Left table: deployment options -----
+    add_text(s, "Deployment options",
+             Inches(0.5), Inches(2.20), Inches(6), Inches(0.35),
+             font_size=14, bold=True, color=NAVY)
+    options = [
+        ["Option", "What it is", "When"],
+        ["Flex Gateway — Connected mode on-prem",
+         "Runtime in your DC; control plane still SaaS (outbound HTTPS to anypoint.mulesoft.com only)",
+         "You want central policy management but data plane on-prem"],
+        ["Flex Gateway — Local mode",
+         "Standalone — no Anypoint Platform connection; declarative config files only",
+         "Fully air-gapped / sovereign; no outbound at all"],
+        ["Mule Runtime on-prem (legacy)",
+         "Full Mule runtime + API Manager Gateway plugin",
+         "Only if you also need integration logic in-runtime"],
+    ]
+    make_table(s, options, Inches(0.4), Inches(2.55), Inches(6.3), Inches(2.6),
+               header_bg=NAVY, header_fg=WHITE, header_font_size=11, body_font_size=9,
+               col_widths=[Inches(2.3), Inches(2.5), Inches(1.5)])
+
+    add_text(s, "Substrates: bare-metal Linux · RHEL VM · Docker · Kubernetes (OpenShift / Rancher / EKS-Anywhere). Multi-arch images (amd64 + arm64).",
+             Inches(0.4), Inches(5.18), Inches(6.3), Inches(0.4),
+             font_size=10, color=DARK)
+
+    # ----- Right table: operational ownership shift -----
+    add_text(s, "Operational ownership shift",
+             Inches(7.0), Inches(2.20), Inches(6), Inches(0.35),
+             font_size=14, bold=True, color=NAVY)
+    ownership = [
+        ["Concern", "SaaS", "On-prem"],
+        ["OS / patching", "MuleSoft", "You"],
+        ["Runtime upgrades", "MuleSoft", "You"],
+        ["HA setup", "Built-in multi-AZ", "Active/active across DCs — you build"],
+        ["Capacity planning", "Auto-scale", "You provision for peak"],
+        ["Monitoring", "Anypoint Monitoring built-in", "Your SOC + tooling"],
+        ["Personnel access to runtime", "MuleSoft (contractual)", "You only"],
+        ["Compliance audit posture", "Inherited (SOC 2, FedRAMP Mod)", "Yours to maintain"],
+        ["Release-window downtime", "Rolling, transparent", "Your change window"],
+    ]
+    make_table(s, ownership, Inches(7.0), Inches(2.55), Inches(6.0), Inches(3.0),
+               header_bg=NAVY, header_fg=WHITE, header_font_size=11, body_font_size=10,
+               col_widths=[Inches(2.0), Inches(2.0), Inches(2.0)])
+
+    # ----- When to choose on-prem (full-width callout) -----
+    add_solid_rect(s, Inches(0.4), Inches(5.7), Inches(12.6), Inches(1.4), LIGHT_BLUE)
+    add_text(s, "When to choose on-prem over SaaS",
+             Inches(0.55), Inches(5.78), Inches(8), Inches(0.35),
+             font_size=14, bold=True, color=NAVY)
+    when_items = [
+        "Regulatory regime mandates on-prem (some sovereign-cloud regimes, classified, certain healthcare jurisdictions)",
+        "Your risk appetite cannot accept ANY MuleSoft personnel privileged access to runtime — even contractually constrained",
+        "You already operate a hardened on-prem PII platform (HSM, dedicated SOC, DLP, SIEM) — adding the gateway is incremental",
+        "Sustained volume > 5–10M calls/day where amortized on-prem hardware undercuts the SaaS license model",
+        "True air-gap operation required — no outbound connection to anypoint.mulesoft.com is permitted (forces Local mode)",
+    ]
+    add_bullets(s, when_items, Inches(0.55), Inches(6.12), Inches(12.4), Inches(1.0),
+                font_size=10, color=DARK, line_spacing=1.10)
+    return s
+
+
 def slide_risks_and_next(prs):
     s = prs.slides.add_slide(prs.slide_layouts[6])
     add_header(s, "Risks & next steps",
@@ -476,6 +546,7 @@ def main():
         slide_network,
         slide_capacity,
         slide_azure_vs_aws,
+        slide_onprem,
         slide_risks_and_next,
     ]
     total = len(builders)
