@@ -20,9 +20,12 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 
 | File | What it covers |
 |---|---|
-| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | 10-slide executive/architect deck: title · synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · capacity planning · Azure vs AWS Private Spaces · on-prem deployment · risks & next steps |
-| [presentations/build_pptx.py](presentations/build_pptx.py) | Reproducible generator — regenerate the deck with `python presentations/build_pptx.py` after editing |
-| [presentations/diagrams/mulesoft_architecture.py](presentations/diagrams/mulesoft_architecture.py) | Generates the architecture PNG embedded in the deck (run before `build_pptx.py` if the diagram source changes) |
+| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | **SaaS-centric 10-slide deck**: title · synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · capacity planning · Azure vs AWS Private Spaces · on-prem deployment · risks & next steps |
+| [presentations/MuleSoft-APIGateway-OnPrem.pptx](presentations/MuleSoft-APIGateway-OnPrem.pptx) | **On-prem-only 10-slide deck**: title · why on-prem · on-prem architecture (embedded diagram) · Connected vs Local mode · VM vs Kubernetes install · hardware sizing curve · components to provision · DR postures with RTO/RPO · config replication mechanics · operational ownership shift + risks + next steps |
+| [presentations/build_pptx.py](presentations/build_pptx.py) | Generator for the SaaS-centric deck |
+| [presentations/build_onprem_pptx.py](presentations/build_onprem_pptx.py) | Generator for the on-prem-only deck |
+| [presentations/diagrams/mulesoft_architecture.py](presentations/diagrams/mulesoft_architecture.py) | Generates the SaaS architecture PNG |
+| [presentations/diagrams/onprem_architecture.py](presentations/diagrams/onprem_architecture.py) | Generates the on-prem architecture PNG (multi-DC active/active with F5 GSLB, Ansible AWX, Vault) |
 
 ## Conventions
 
