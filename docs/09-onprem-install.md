@@ -32,6 +32,7 @@ This doc is the **on-prem counterpart** to the SaaS path described in docs 01–
 | Patching pipeline (OS + container image) | Platform team | Tie into your existing patching cadence |
 | SIEM forwarding endpoint (Splunk HEC or equivalent) | Observability | Per [doc 05](05-observability.md) |
 | Backup of `/etc/flex-gateway/` (config) | Backup team | Daily; survives node loss |
+| **Redis Sentinel 3-node cluster per DC** (optional but recommended) | Platform team | Distributed rate-limit counters across replicas. Without this, per-partner SLA limits are scoped per-replica, not globally. See [doc 10](10-redis-cache.md) |
 
 ---
 
@@ -527,3 +528,4 @@ sudo systemctl reload flex-gateway
 - [05 — Observability](05-observability.md) — what to ship from the on-prem runtime
 - [07 — Data Protection](07-data-protection.md) — when on-prem is the right choice for citizen data
 - [08 — Flex Gateway Deep-Dive](08-flex-gateway.md) — product strengths/weaknesses
+- [10 — Redis Cache for Flex Gateway](10-redis-cache.md) — when and how to add Redis for distributed rate limiting
