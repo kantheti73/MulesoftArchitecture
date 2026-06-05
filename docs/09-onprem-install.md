@@ -32,7 +32,7 @@ This doc is the **on-prem counterpart** to the SaaS path described in docs 01–
 | Patching pipeline (OS + container image) | Platform team | Tie into your existing patching cadence |
 | SIEM forwarding endpoint (Splunk HEC or equivalent) | Observability | Per [doc 05](05-observability.md) |
 | Backup of `/etc/flex-gateway/` (config) | Backup team | Daily; survives node loss |
-| **Redis Sentinel 3-node cluster per DC** (optional but recommended) | Platform team | Distributed rate-limit counters across replicas. Without this, per-partner SLA limits are scoped per-replica, not globally. See [doc 10](10-redis-cache.md) |
+| **Redis Sentinel 3-node cluster per DC** (**required for Connected mode**) | Platform team | Per [MuleSoft docs](https://docs.mulesoft.com/gateway/latest/flex-security-best-practices#secure-redis-shared-storage), Omni/Flex Gateway in **Connected mode uses Redis shared storage to cache request data and runtime configurations**. Also backs distributed rate-limit counters. Not required for Local mode. Full design in [doc 10](10-redis-cache.md). |
 
 ---
 

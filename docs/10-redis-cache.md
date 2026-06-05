@@ -1,106 +1,145 @@
-# 10 — Redis Cache for Flex Gateway (Optional but Recommended)
+# 10 — Redis Shared Storage for Omni Gateway (Connected Mode)
 
-This doc settles a common architecture question: does Anypoint Flex Gateway require Redis? **Short answer: no for config, no for basic request caching, yes for distributed rate limiting across replicas.** This doc covers what Redis is actually used for, sizing, deployment shape, install instructions, and DR.
+This doc covers Redis usage with **Anypoint Omni Gateway** (the rebranded name for what was previously called Flex Gateway). It explains where Redis is required vs optional, what it stores, sizing, deployment shape, install, and DR.
+
+> **Naming note.** MuleSoft has rebranded **Flex Gateway → Omni Gateway** in current documentation. The product, binary, and capabilities are the same; the name has changed. Throughout this repo, references to "Flex Gateway" and "Omni Gateway" are equivalent. Where we cite MuleSoft documentation, we use their current term ("Omni Gateway"). Where this repo's earlier docs (01–09) refer to "Flex Gateway", read as Omni Gateway — that's the same product.
 
 ---
 
-## 1. What Flex Gateway uses Redis for (and what it doesn't)
+## 1. The bottom line
 
-| Capability | Needs Redis? | Why |
+Per the MuleSoft security best-practices documentation:
+
+> "Omni Gateway uses Redis shared storage to cache request data and runtime configurations in **Connected Mode only**."
+
+| Deployment mode | Redis required? | What Redis stores |
 |---|---|---|
-| Policy configuration storage | **No** | Anypoint Control Plane pushes policies (Connected mode) or local YAML files (Local mode); each replica caches in-memory |
-| Policy push / hot-reload | **No** | Long-polled HTTPS from Anypoint OR `SIGHUP` from Ansible AWX |
-| Request body buffering | **No** | Envoy buffers in-memory per replica |
-| HTTP response cache (default) | **No** | Envoy in-memory cache per replica — fine for most use cases |
-| HTTP response cache (shared across replicas) | Optional | Only if you want a single shared cache pool; rarely worth the complexity for gateway-tier caching |
-| **Distributed rate limiting across replicas** | **Yes (recommended)** | Without Redis, every replica counts independently → effective limit = configured × N replicas |
-| OAuth 2.0 introspection cache | Optional | Only if you use opaque tokens + introspection. JWT-with-JWKS doesn't need it (we don't use introspection) |
-| Custom WASM policy state | Depends | If you build a stateful custom policy. Not in our architecture today |
-| Token exchange (RFC 8693) cache | Yes — if implementing | Different architecture; relevant only if you adopt the pattern from `aws_ssp_webmethods_onprem` |
+| **Connected Mode** (on-prem or CH 2.0 Private Space) | **Yes — required** | Request data cache + runtime configurations + distributed policy state (e.g. rate-limit counters) |
+| **Local Mode** (fully air-gapped) | No | All state lives in declarative YAML files + in-process memory per replica |
 
-**Reads like:** "the gateway itself is stateless; Redis is for the small number of policies that genuinely need shared state across replicas."
+If you're deploying Connected mode on-prem (the path we've been designing), Redis is a **mandatory** prerequisite — not optional.
 
 ---
 
-## 2. The "do I actually need Redis?" decision
+## 2. What Redis stores in Connected mode
 
-Use this short rubric.
-
-| Condition | If yes → |
+| Data | Why it's shared (and not per-replica) |
 |---|---|
-| You have more than 1 Flex Gateway replica behind the same logical gateway | Continue ↓ |
-| You apply per-partner / per-client rate limits AND those limits are meaningful for SLA fairness | **Yes, add Redis** |
-| All rate limits are "best-effort fairness" with no SLA contract | Skip Redis; per-replica counters are good enough |
-| You want a **single shared HTTP response cache** across replicas | Yes, add Redis (rarely required) |
-| You're considering RFC 8693 token exchange at the gateway tier | Yes — same Redis can serve double duty |
+| **Runtime configurations** pushed by Anypoint Control Plane | Replicas need consistent policy state; Redis is the convergence point so a config push doesn't have to wait for every replica to ack |
+| **Request data cache** | Response caching, OAuth introspection cache, any policy that benefits from a shared lookup across replicas |
+| **Rate-limit counters** | Without shared counters, "1000 req/min per partner" silently becomes 1000 × N replicas |
+| **Custom WASM policy state** (if any) | Any stateful custom policy uses the same shared store |
 
-For our architecture (4 replicas across 2 DCs + SLA tiers Bronze/Silver/Gold from [doc 02 §3](02-policies.md#3-external-listener--policy-bundle)) → **add Redis**. Without it, a Gold partner's "1000 req/min" allowance becomes 4000 req/min in practice — and worse, the 4000 isn't evenly distributable because LB hash collisions mean some replicas get more partner traffic than others.
+The exact list of caches Omni Gateway maintains in Redis is not enumerated field-by-field in the public docs, but the security best-practices guidance is clear that **both runtime configurations and request-level data flow through Redis** in Connected mode. Treat it as a first-class infrastructure component, not a "nice to have for rate limiting" add-on.
+
+### Implication for our architecture
+
+For the on-prem design in [doc 09](09-onprem-install.md) (Connected mode, 4 replicas across 2 DCs), Redis is **required infrastructure**, equal in stature to F5 GSLB, HashiCorp Vault, and the gateway VMs/pods themselves. Treat it that way in capacity planning, change management, and DR.
 
 ---
 
-## 3. Sizing Redis for our 100K/day workload
+## 3. SaaS path (CloudHub 2.0 Private Space) — who provides Redis?
 
-The data that lives in Redis is tiny — it's rate-limit counters, not request payloads.
+For CH 2.0 Private Space (the SaaS path from [doc 01](01-api-gateway-architecture.md) / [doc 06](06-azure-private-space.md)):
 
-| Item | Size |
+- The Private Space deployment is **MuleSoft-managed**. They are responsible for providing the Redis shared storage as part of the managed runtime — you don't provision it yourself.
+- This is one of the reasons SaaS is operationally lighter: you don't run Redis, Anypoint runs Redis.
+- **Verify with your MuleSoft account team** how Redis is provisioned in your specific Private Space (per-tenant Redis, shared regional pool, encryption posture, backup commitments). The data classification of citizen data ([doc 07](07-data-protection.md)) makes "exactly what runs in MuleSoft's Redis with my request data" a fair due-diligence question.
+
+---
+
+## 4. Securing the Redis instance (per MuleSoft guidance)
+
+Direct quotes from the [Flex/Omni security best practices page](https://docs.mulesoft.com/gateway/latest/flex-security-best-practices#secure-redis-shared-storage):
+
+> "You must secure the Redis service to prevent unauthorized access."
+>
+> "Enable access control to limit Redis access from sources other than Omni Gateway."
+>
+> "Deploy the Redis as close as possible to the Omni Gateway deployment to further limit vulnerabilities."
+
+Why this matters specifically: per the same MuleSoft page, an unauthorized user with Redis access "could potentially obtain cached configuration data, such as Omni configuration or request processing caches, and can disrupt the runtime." For citizen-data APIs this is a **direct PII exposure surface** — request data caches can hold elements of in-flight requests.
+
+### Concrete controls (translation of the guidance into action)
+
+| Control | Implementation |
 |---|---|
-| 4 SLA tiers × ~100 distinct clients = ~400 counter keys | Trivial |
-| Per-counter (key + value + TTL metadata) | ~150 bytes |
-| Total steady-state working set | ~60 KB |
-| Read/write ops at peak (matches gateway TPS) | ~35 ops/sec |
-| Worst-case spike | ~100 ops/sec |
-| Latency budget added by Redis lookup | 1–3 ms |
-
-**The smallest Redis instance you can buy will handle this with 100× headroom.** Sizing is driven by HA topology (3 nodes minimum for Sentinel quorum), not by load.
-
-| Deployment | Per-instance spec | Cost ballpark |
-|---|---|---|
-| AWS ElastiCache Redis | `cache.t4g.small` (1.5 GB) | ~$25/mo per node |
-| Azure Cache for Redis | Basic C1 (1 GB) | ~$50/mo per node |
-| Self-hosted Redis on Linux VM | 2 vCPU / 2 GB RAM | Existing VM capacity |
+| **Network isolation** | Redis nodes accessible only from the gateway SG/CIDR; no operator laptops; jumpbox only |
+| **TLS in transit** | Redis TLS port (6380); certs signed by internal CA; `tls-auth-clients yes` |
+| **AUTH password** | Strong rotating password held in HashiCorp Vault, pulled by the gateway at startup |
+| **Co-location** | Redis nodes in the same DC as the gateway replicas they serve — minimizes attack path AND latency |
+| **No persistence** | `appendonly no` + small `maxmemory` — minimizes data-at-rest exposure window |
+| **Disable dangerous commands** | `rename-command FLUSHALL ""` + `CONFIG ""` + `KEYS ""` in `redis.conf` |
+| **Monitor for unexpected commands** | Audit log via `MONITOR` (sampled) → SIEM |
 
 ---
 
-## 4. Deployment options
+## 5. Sizing for our 100K/day workload
+
+The Redis state volume is small relative to typical Redis use cases, but it's no longer "trivially small" since it includes runtime configurations and request-data cache, not just rate-limit counters:
+
+| Item | Size estimate |
+|---|---|
+| 4 SLA tiers × ~100 distinct clients = ~400 rate-limit counter keys | ~60 KB |
+| Runtime configuration cache (policy bundles per API per replica) | ~1–10 MB depending on policy count |
+| Request data cache (response cache, OAuth introspection cache, etc.) | Variable; sized by policy config — typically 10–100 MB |
+| **Total steady-state working set** | **~100 MB safe estimate** |
+| Read/write ops at peak | ~100–200 ops/sec |
+
+**The smallest production Redis tier still has 10–100× headroom.** Sizing remains driven by HA topology, not load.
+
+### Recommended instance specs
+
+| Deployment | Per-instance spec |
+|---|---|
+| AWS ElastiCache Redis | `cache.t4g.small` (1.5 GB) or `cache.t4g.medium` (3.2 GB) |
+| Azure Cache for Redis | Basic C1 (1 GB) or Standard C1 (1 GB with replication) |
+| Self-hosted on RHEL/Ubuntu | 2 vCPU / 2 GB RAM / 20 GB SSD per node, 3 nodes minimum |
+
+---
+
+## 6. Deployment options
 
 ```mermaid
 flowchart TB
-    A["Need Redis<br/>for Flex Gateway"]
-    A --> Q1{"Where does<br/>Flex Gateway run?"}
-    Q1 -->|"CloudHub 2.0<br/>Private Space (AWS)"| O1["AWS ElastiCache for Redis<br/>(in MuleSoft Private Space VPC<br/>or via VPC peering)"]
-    Q1 -->|"CloudHub 2.0<br/>Private Space (Azure)"| O2["Azure Cache for Redis<br/>(Private Endpoint to Private Space VNet)"]
+    A["Connected mode on Omni Gateway<br/>Redis is REQUIRED"]
+    A --> Q1{"Where does<br/>Omni Gateway run?"}
+    Q1 -->|"CH 2.0 Private Space<br/>(AWS or Azure)"| S1["MuleSoft provides Redis<br/>as part of the managed runtime<br/>(verify provisioning details)"]
     Q1 -->|"On-prem VM / K8s"| Q2{"HA / DR posture?"}
-    Q2 -->|"Single-DC HA"| O3["Redis Sentinel (3 nodes)<br/>self-hosted on-prem"]
-    Q2 -->|"Multi-DC active/active"| O4["Redis Enterprise<br/>(commercial — active-active CRDTs)"]
-    Q2 -->|"Multi-DC active/passive"| O5["Redis Sentinel + async replica in DR DC"]
+    Q2 -->|"Per-DC HA (active/passive across DCs)"| O3["Redis Sentinel (3 nodes per DC)<br/>self-hosted"]
+    Q2 -->|"Multi-DC active/active"| O4["Redis Enterprise<br/>(commercial — active/active CRDTs)<br/>OR document per-DC scope"]
 ```
 
 ### Recommendation by deployment shape
 
-| Flex Gateway runs on… | Recommended Redis |
+| Omni Gateway runs on… | Redis recommendation |
 |---|---|
-| CH 2.0 Private Space on AWS | **AWS ElastiCache Redis 7**, multi-AZ, in-transit + at-rest TLS, in the same Private Space VPC or peered |
-| CH 2.0 Private Space on Azure (`centralus`) | **Azure Cache for Redis** (Standard tier, multi-AZ in `centralus`), accessed via Private Endpoint |
-| **On-prem, single DC (or per-DC isolated)** | **Redis Sentinel** with 3-node quorum, self-hosted |
-| **On-prem, two DCs active/active** | **Redis Enterprise** (active-active multi-master) — only commercial option that handles concurrent writes across DCs without CRDT conflicts |
+| CH 2.0 Private Space on AWS | MuleSoft-provided (verify provisioning + isolation) |
+| CH 2.0 Private Space on Azure (`centralus`) | MuleSoft-provided (verify) |
+| **On-prem single DC** | **Redis Sentinel** with 3-node quorum, self-hosted |
+| **On-prem two DCs active/active** | **Redis Enterprise** (active-active multi-master) — the only OSS-compatible option for correct shared state across DCs |
 | On-prem two DCs active/passive | Redis Sentinel in DC-1 + async replica in DC-2; failover by reconfiguring Sentinel + LB |
 
-**Honest call-out:** for our on-prem active/active design from [doc 09 §7](09-onprem-install.md#71-dr-posture-options), Redis Enterprise is the only clean answer. OSS Redis with two active masters across DCs **does not give you correct rate-limit counts** under split-brain. If Redis Enterprise budget isn't available, two options:
+### Honest framing for OSS-only shops
 
-1. Run **per-DC Redis Sentinel** and accept that rate limits are scoped per-DC (Gold partner = 1000/min per DC = 2000/min globally — document this in your partner SLA).
-2. Use **per-DC Sentinel + active/passive** with manual failover during DR. Partners may see a brief rate-limit reset during DR cutover.
+If Redis Enterprise budget isn't available for true active/active multi-DC, **the gateway design has to accept one of two trade-offs**:
+
+1. **Per-DC Redis scope** — rate limits and config caches scoped per DC. Gold partner = 1000/min per DC = 2000/min globally. **Document this explicitly in your partner SLA.**
+2. **Active/passive Redis with cross-DC async replica** — full RTO < 60 s requires LB reconfiguration during DR cutover; rate-limit counters reset on failover. Brief partner-visible SLA reset window.
+
+Neither is wrong — both are common in production. The wrong move is shipping multi-DC active/active without thinking through which Redis topology you're committing to.
 
 ---
 
-## 5. Install — Redis Sentinel on RHEL (on-prem path)
+## 7. Install — Redis Sentinel on RHEL (on-prem, per DC)
 
-Three nodes minimum for quorum. Run on dedicated VMs or shared with other low-traffic services.
+Three nodes minimum for quorum. Dedicate the VMs — don't share with other workloads (per [§10 anti-patterns](#10-anti-patterns-to-avoid)).
 
 ```bash
 # On each of 3 nodes: redis-sent-1, redis-sent-2, redis-sent-3
 # Recommended spec per node: 2 vCPU / 2 GB RAM / 20 GB SSD
 
-# 1. Install Redis 7 from EPEL / Remi or distro packages
+# 1. Install Redis 7
 sudo dnf install -y epel-release
 sudo dnf install -y redis
 
@@ -108,34 +147,41 @@ sudo dnf install -y redis
 sudo tee -a /etc/redis/redis.conf <<'EOF'
 bind 0.0.0.0
 protected-mode yes
-port 6379
-requirepass <strong-random-password>
-masterauth <strong-random-password>
-maxmemory 256mb
-maxmemory-policy allkeys-lru
-appendonly no                           # rate-limit counters don't need persistence
+port 0                                  # disable plaintext; force TLS
 tls-port 6380
 tls-cert-file /etc/redis/tls/server.crt
 tls-key-file  /etc/redis/tls/server.key
 tls-ca-cert-file /etc/redis/tls/ca.crt
 tls-auth-clients yes
+requirepass <strong-random-password>
+masterauth <strong-random-password>
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+appendonly no                           # caches are ephemeral; no persistence
+
+# Disable dangerous commands per MuleSoft security guidance
+rename-command FLUSHALL ""
+rename-command FLUSHDB ""
+rename-command CONFIG ""
+rename-command KEYS ""
+rename-command DEBUG ""
 EOF
 
-# 3. Configure /etc/redis/sentinel.conf (each node)
+# 3. Configure /etc/redis/sentinel.conf
 sudo tee /etc/redis/sentinel.conf <<'EOF'
 port 26379
-sentinel monitor flex-rate-limit redis-sent-1.internal 6379 2
-sentinel down-after-milliseconds flex-rate-limit 5000
-sentinel failover-timeout flex-rate-limit 30000
-sentinel parallel-syncs flex-rate-limit 1
-sentinel auth-pass flex-rate-limit <strong-random-password>
+sentinel monitor omni-gw-shared redis-sent-1.internal 6380 2
+sentinel down-after-milliseconds omni-gw-shared 5000
+sentinel failover-timeout omni-gw-shared 30000
+sentinel parallel-syncs omni-gw-shared 1
+sentinel auth-pass omni-gw-shared <strong-random-password>
 EOF
 
 # 4. Enable + start
 sudo systemctl enable --now redis redis-sentinel
 
 # 5. Verify
-redis-cli -h redis-sent-1.internal -p 6379 -a <pass> --tls ping
+redis-cli -h redis-sent-1.internal -p 6380 -a <pass> --tls --cacert /etc/redis/tls/ca.crt ping
 redis-cli -h redis-sent-1.internal -p 26379 sentinel masters
 ```
 
@@ -144,124 +190,107 @@ redis-cli -h redis-sent-1.internal -p 26379 sentinel masters
 ```mermaid
 flowchart LR
     subgraph DC1["Data Center 1"]
-        FG1A["Flex Gateway repl 1"]
-        FG1B["Flex Gateway repl 2"]
+        FG1A["Omni Gateway repl 1"]
+        FG1B["Omni Gateway repl 2"]
         R1["Redis Sentinel<br/>node 1 (master)"]
         R2["Redis Sentinel<br/>node 2 (replica)"]
         R3["Redis Sentinel<br/>node 3 (replica)"]
     end
 
-    FG1A -->|TLS :6379| R1
-    FG1B -->|TLS :6379| R1
+    FG1A -->|TLS :6380| R1
+    FG1B -->|TLS :6380| R1
     R1 <-->|replication| R2
     R1 <-->|replication| R3
     R2 <-->|gossip| R3
 ```
 
-**3 Sentinel nodes** — not 2. With 2 nodes you can't establish quorum during a partition; the cluster won't fail over. Sentinel needs ≥3 voters.
+**3 Sentinel nodes — not 2.** With 2 nodes you can't establish quorum during a partition; Sentinel won't fail over.
 
 ---
 
-## 6. Flex Gateway config — point rate-limit policy at Redis
+## 8. Omni Gateway config — pointing at Redis
 
-In API Manager (Connected mode) or in your local policy YAML (Local mode), set the rate-limit policy's backend to Redis:
+In Connected mode, the Omni Gateway runtime registration includes the shared-storage endpoint configuration. Provide your Sentinel endpoints + auth at registration time OR via the runtime's declarative config:
 
 ```yaml
-# Example: external-listener-bundle.yaml (snippet)
-policies:
-  - policyRef:
-      name: rate-limiting-sla
-    config:
-      tier-resolution-claim: tier               # from JWT 'tier' claim
-      tier-limits:
-        Bronze: { rpm: 60,   burst: 10 }
-        Silver: { rpm: 200,  burst: 30 }
-        Gold:   { rpm: 1000, burst: 100 }
-      # ↓ The bit that matters for distributed counting ↓
-      backend:
-        type: redis
-        endpoints:
-          - host: redis-sent-1.internal
-            port: 6379
-          - host: redis-sent-2.internal
-            port: 6379
-          - host: redis-sent-3.internal
-            port: 6379
-        sentinel-master: flex-rate-limit
-        tls: { enabled: true, ca-cert-secret: redis-ca-cert }
-        auth-secret: redis-auth-password
-        connection-pool: { size: 10, timeout-ms: 100 }
-        fallback-on-error: local                 # if Redis unreachable, fall back to per-replica counters
+# Shared-storage block on the gateway runtime config
+sharedStorage:
+  type: redis-sentinel
+  sentinels:
+    - host: redis-sent-1.internal
+      port: 26379
+    - host: redis-sent-2.internal
+      port: 26379
+    - host: redis-sent-3.internal
+      port: 26379
+  masterName: omni-gw-shared
+  tls:
+    enabled: true
+    caCertSecret: redis-ca-cert        # mounted from Vault
+  auth:
+    passwordSecret: redis-auth-password # mounted from Vault
+  connectionPool:
+    size: 10
+    timeoutMs: 100
+  fallbackOnError: local                # if Redis unreachable, degrade per-replica
 ```
 
-The `fallback-on-error: local` flag is critical — without it, Flex Gateway will reject requests when Redis is unreachable (fail-closed). With it, you degrade to per-replica counting until Redis recovers (fail-open with relaxed limits). For non-critical SLA enforcement, `local` fallback is the right default.
+`fallbackOnError: local` is critical for production — a brief Redis outage should not become a gateway outage. With `local`, you degrade to per-replica counters and per-replica config cache until Redis recovers (rate limits become relaxed; no traffic dropped). Verify the exact field name + behavior against your Omni Gateway version's docs — naming has shifted between minor releases.
 
 ---
 
-## 7. Disaster recovery for Redis itself
+## 9. Disaster recovery for Redis itself
 
 | Scenario | Behavior with Sentinel | Mitigation |
 |---|---|---|
-| Master node fails | Sentinel elects new master in 5–10 s; Flex Gateway reconnects via sentinel endpoint | Built-in; no action needed |
-| Quorum loss (2 of 3 nodes down) | Cluster goes read-only; Flex Gateway falls back to local counters | Restore quorum; review failure mode |
-| DC1 lost entirely (single-DC Redis) | Rate limits effectively reset; Flex Gateway in DC2 uses local counters until Redis is restored | Plan: provision Redis in BOTH DCs (per recommendation §4) |
-| Network partition between Flex Gateway and Redis | Per-replica `connection-pool.timeout-ms` (100ms) → fallback-on-error kicks in | Tuned timeout prevents long latency stalls |
-| Redis Enterprise CRDT replication lag | Counts may briefly double-count or under-count across DCs | Documented as expected behavior — rate limits are best-effort during partition |
+| Master node fails | Sentinel elects new master in 5–10 s; Omni Gateway reconnects via sentinel endpoints | Built-in; no action |
+| Quorum loss (2 of 3 nodes down) | Cluster goes read-only; Omni Gateway falls back to local cache per `fallbackOnError` | Restore quorum; review failure mode |
+| **DC1 lost entirely (single-DC Redis)** | Replicas in DC2 lose access to their config + rate-limit state; per-replica fallback engages | Plan: provision Redis in **both** DCs per §6 |
+| Network partition Omni ↔ Redis | `connectionPool.timeoutMs: 100` → fallback-on-error kicks in within 100 ms | Tuned timeout prevents request latency stalls |
+| Redis Enterprise CRDT replication lag | Counters may briefly double- or under-count across DCs during convergence | Documented as expected; rate limits are best-effort during partition |
 
 ### Backup
 
-For pure rate-limit counters: **don't bother backing Redis up.** The state is ephemeral (TTLs typically 60s for "per-minute" counters). A complete data loss means partners briefly get higher-than-SLA rates for one window. Not worth the operational overhead of RDB snapshots + offsite copy.
+For pure rate-limit counters + transient request cache: don't bother backing Redis up — state is ephemeral with short TTLs.
 
-If you ever store anything in Redis that's NOT ephemeral (e.g., custom WASM policy state), revisit this decision.
+**For the runtime-configuration cache specifically, backup is also unnecessary** because Anypoint Control Plane is the authoritative source — on Redis cold-start, Omni Gateway repopulates from Anypoint within seconds. Local mode is the only case where you'd ever want Redis backup, and Local mode doesn't use Redis anyway.
 
 ---
 
-## 8. Components to provision (delta to add to doc 09)
+## 10. Components to provision (delta added to doc 09)
 
-Add these to the components-to-provision table in [doc 09 §2](09-onprem-install.md#2-prerequisites-both-paths):
+These are now **mandatory** for our Connected-mode on-prem deployment, not optional:
 
 | Component | Owner | Purpose |
 |---|---|---|
-| Redis Sentinel 3-node cluster per DC (or Redis Enterprise for active/active) | Platform team | Distributed rate-limit counters across Flex Gateway replicas |
-| TLS certs for Redis nodes (signed by internal CA) | PKI team | mTLS between Flex Gateway and Redis |
-| Redis AUTH password in HashiCorp Vault | Security team | Credential rotation |
-| Firewall rules: Flex Gateway SG/CIDR → Redis 6379/6380 | Network team | Allow gateway to reach Redis only |
+| Redis Sentinel 3-node cluster per DC (or Redis Enterprise for active/active) | Platform team | Shared storage for runtime config + request data cache + rate-limit counters |
+| TLS certs for Redis nodes (signed by internal CA) | PKI team | mTLS between Omni Gateway and Redis (also protects cached PII) |
+| Redis AUTH password in HashiCorp Vault | Security team | Credential rotation; pulled by gateway at startup |
+| Firewall rules: gateway SG/CIDR → Redis 6380 TLS only | Network team | Allow gateway to reach Redis; deny everything else |
 | Monitoring: Redis exporter → Prometheus / Datadog | Observability | Connection count, evictions, replication lag, failover events |
+| Dedicated VMs (NOT shared with other workloads) | Platform team | Noisy-neighbor isolation; security blast radius |
 
 ---
 
-## 9. Cost / footprint summary
-
-For our 4-replica × 2-DC design with Redis Sentinel per DC:
-
-| Item | Per DC | Total |
-|---|---|---|
-| Redis VMs (3 for Sentinel quorum) | 3× (2 vCPU / 2 GB / 20 GB SSD) | 6 VMs |
-| Compute footprint | 6 vCPU + 6 GB RAM | 12 vCPU + 12 GB RAM |
-| Storage | 60 GB total | 120 GB total |
-| Operational burden | Minimal — Redis is famously low-maintenance | — |
-| Approx monthly cost (existing VM capacity) | $0 incremental | $0 incremental |
-
-Redis Enterprise (multi-DC active-active) is meaningfully more expensive — get a quote from Redis Inc. for your call volume + DCs.
-
----
-
-## 10. Anti-patterns to avoid
+## 11. Anti-patterns to avoid
 
 | Anti-pattern | Why |
 |---|---|
-| Using a single Redis node (no Sentinel) | One node fail = rate limiting either fails-open (no limits) or fails-closed (all requests rejected). Both are bad. |
-| 2-node Sentinel "for cost savings" | Can't establish quorum. Sentinel won't fail over. Either go 3-node or don't bother. |
-| Sharing Redis with other workloads (cache for the corporate CMS, etc.) | Noisy-neighbor risk; one tenant blows up and rate limiting goes with it |
-| Persisting rate-limit counters to disk (`appendonly yes`) | Wasted IO; the counters are ephemeral by design |
-| Skipping TLS between Flex Gateway and Redis on the internal network | Auth password leaks become a foothold |
-| Allowing direct `redis-cli` access from operator laptops to the prod cluster | Bypasses audit; force jumpbox or read-only replicas |
-| Disabling `fallback-on-error: local` in production | Redis blip = production outage |
+| Single Redis node (no Sentinel) | One node fail = either all rate limits fail-open OR gateway degrades to local — undermines the reason you added Redis |
+| 2-node Sentinel "for cost savings" | Can't establish quorum during partition. Either 3-node or skip Sentinel entirely. |
+| Sharing Redis with other workloads | Noisy-neighbor risk; one tenant blows up and your gateway state goes with it; expands the security blast radius for PII-bearing caches |
+| `appendonly yes` (persistence enabled) | Wasted IO; the state is ephemeral by design; **and** persistence creates a data-at-rest exposure surface for cached request data (PII risk) |
+| Skipping TLS between gateway and Redis | AUTH password sniff-able; cached request data sniff-able; defeats the purpose of network-level controls |
+| Direct `redis-cli` access from operator laptops to prod | Bypasses audit; force jumpbox; restrict by SG to gateway hosts only |
+| Disabling `fallbackOnError: local` | Redis blip = production outage |
+| Not disabling `FLUSHALL` / `KEYS` / `CONFIG` via `rename-command` | One stray operator command nukes shared state across all replicas instantly |
+| Skipping the §4 security controls because "it's internal-only" | The Redis cache holds in-flight request data including citizen data — treat it as a PII tier of the architecture |
 
 ---
 
 ## Related
 
-- [02 — Policies §3 + §4](02-policies.md#3-external-listener--policy-bundle) — the rate-limiting policy that consumes Redis
-- [09 — On-Prem Install Guide](09-onprem-install.md) — Redis is now in the prerequisites table
-- [08 — Flex Gateway Deep-Dive §3.2](08-flex-gateway.md#32-capabilities) — Flex Gateway is stateless; Redis is the only state we introduce
+- [02 — Policies](02-policies.md) — rate-limit policy that consumes the shared store
+- [07 — Data Protection](07-data-protection.md) — Redis is a PII surface for citizen-data workloads (request data caching)
+- [09 — On-Prem Install Guide](09-onprem-install.md) — Redis now sits in the prerequisites table as required
+- MuleSoft docs: [Secure Redis Shared Storage](https://docs.mulesoft.com/gateway/latest/flex-security-best-practices#secure-redis-shared-storage) — the official source
