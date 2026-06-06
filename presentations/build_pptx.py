@@ -339,37 +339,37 @@ def slide_network(prs):
 
 def slide_capacity(prs):
     s = prs.slides.add_slide(prs.slide_layouts[6])
-    add_header(s, "Capacity planning — 100K calls/day",
-               "Traffic math, replica sizing, headroom, and indicative cost")
+    add_header(s, "Capacity planning — 5M calls/day",
+               "Traffic math, replica sizing, headroom, and indicative Prod cost")
 
     # Traffic math table — left half
     add_text(s, "Traffic math", Inches(0.5), Inches(1.55), Inches(6), Inches(0.4),
              font_size=15, bold=True, color=NAVY)
     traffic = [
         ["Metric", "Value"],
-        ["Daily volume", "100,000 calls"],
-        ["Average TPS (24h)", "~1.16"],
-        ["Business-hours avg TPS (8h concentration)", "~3.5"],
-        ["Peak TPS (5× business average)", "~17"],
-        ["Worst-case spike (10× business average)", "~35"],
-        ["Headroom over peak with recommended config", "≈ 10×"],
+        ["Daily volume", "5,000,000 calls"],
+        ["Average TPS (24h)", "~58"],
+        ["Business-hours avg TPS (8h, 70% concentration)", "~120"],
+        ["Peak TPS (5× business average)", "~600"],
+        ["Worst-case spike (10× business average)", "~1,200"],
+        ["Headroom over spike with recommended config", "≈ 2×"],
     ]
     make_table(s, traffic, Inches(0.5), Inches(1.95), Inches(6.1), Inches(2.6),
                header_bg=NAVY, header_fg=WHITE, header_font_size=12, body_font_size=11,
                col_widths=[Inches(4.0), Inches(2.1)])
 
     # Recommended config table — right half
-    add_text(s, "Recommended configuration", Inches(6.85), Inches(1.55), Inches(6.3), Inches(0.4),
+    add_text(s, "Recommended Prod configuration", Inches(6.85), Inches(1.55), Inches(6.3), Inches(0.4),
              font_size=15, bold=True, color=NAVY)
     config = [
         ["Setting", "Value"],
-        ["CH 2.0 deployment size", "0.1 vCore per replica"],
-        ["Replica count", "2 (multi-AZ)"],
-        ["Auto-scaling", "Enabled — min 2 / max 4"],
-        ["Scale trigger", "CPU > 60% over 5 min"],
+        ["CH 2.0 deployment size", "0.2 vCore per replica"],
+        ["Replica count", "4 (multi-AZ)"],
+        ["Auto-scaling", "Enabled — min 4 / max 8"],
+        ["Scale trigger", "CPU > 55% over 5 min"],
         ["Anypoint DLB", "1 (shared by both listeners)"],
         ["Security Edge (WAF)", "On — external listener only"],
-        ["Anypoint Monitoring tier", "Standard"],
+        ["Anypoint Monitoring tier", "Titanium"],
     ]
     make_table(s, config, Inches(6.85), Inches(1.95), Inches(6.1), Inches(2.95),
                header_bg=NAVY, header_fg=WHITE, header_font_size=12, body_font_size=11,
@@ -377,24 +377,24 @@ def slide_capacity(prs):
 
     # Cost callout — bottom full width
     add_solid_rect(s, Inches(0.5), Inches(5.0), Inches(12.5), Inches(1.85), LIGHT_BLUE)
-    add_text(s, "Indicative monthly cost (list pricing)",
+    add_text(s, "Indicative monthly cost — Prod only (list pricing)",
              Inches(0.7), Inches(5.1), Inches(8), Inches(0.4),
              font_size=15, bold=True, color=NAVY)
 
     cost = [
         ["Line item", "Monthly (approx)"],
-        ["2× Flex Gateway replicas @ 0.1 vCore", "$400 – $800"],
+        ["4× Flex Gateway replicas @ 0.2 vCore", "$1,600 – $3,200"],
         ["Private Space base fee", "$1,500 – $3,000"],
         ["Dedicated Load Balancer", "$250"],
-        ["Anypoint Monitoring (Standard)", "$200 – $500"],
-        ["Data transfer (low at this volume)", "~$50"],
-        ["Total (list, gateway-tier only)", "≈ $2,400 – $4,600 / mo"],
+        ["Anypoint Monitoring (Titanium)", "$800 – $1,500"],
+        ["Data transfer (5M/day, ~5 KB avg)", "~$250"],
+        ["Total (list, Prod gateway-tier only)", "≈ $4,400 – $8,200 / mo"],
     ]
     make_table(s, cost, Inches(0.7), Inches(5.55), Inches(12.1), Inches(1.25),
                header_bg=BLUE, header_fg=WHITE, header_font_size=11, body_font_size=10,
                col_widths=[Inches(8.0), Inches(4.1)])
 
-    add_text(s, "Note: list price is the ceiling; enterprise discount typically reduces by 30–50%. ExpressRoute / Direct Connect costs are absorbed by existing network OpEx.",
+    add_text(s, "Note: 4 environments (DEV / QA / Acceptance / Prod) with QA mirroring Prod for load testing roughly doubles gateway compute spend. List price is the ceiling; enterprise discount typically reduces by 30–50%.",
              Inches(0.5), Inches(6.85), Inches(12.3), Inches(0.3),
              font_size=10, color=DARK)
     return s

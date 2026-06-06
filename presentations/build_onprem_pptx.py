@@ -292,7 +292,7 @@ def slide_vm_vs_k8s(prs):
 
 def slide_sizing(prs):
     s = prs.slides.add_slide(prs.slide_layouts[6])
-    add_header(s, "Hardware sizing — keyed to 100K calls/day with growth headroom",
+    add_header(s, "Hardware sizing — 5M calls/day target",
                "Provision for peak, monitor utilization, scale per the curve")
 
     # Left — per-replica spec
@@ -302,8 +302,8 @@ def slide_sizing(prs):
         ["Resource", "Value"],
         ["vCPU", "4 (2 minimum)"],
         ["RAM", "8 GB (2 GB minimum)"],
-        ["Disk", "50 GB SSD (root + logs)"],
-        ["NIC", "1 Gbps (10 Gbps for high-vol DCs)"],
+        ["Disk", "100 GB SSD (~10 GB/day logs at 5M)"],
+        ["NIC", "1 Gbps sufficient; 10 Gbps DC fabric"],
         ["OS", "RHEL 9 / Ubuntu 22.04 LTS"],
         ["Kernel", "5.14+ (better TCP perf)"],
         ["Time sync", "NTP, max 60s skew"],
@@ -312,18 +312,18 @@ def slide_sizing(prs):
                header_bg=NAVY, header_fg=WHITE, header_font_size=12, body_font_size=11,
                col_widths=[Inches(2.5), Inches(3.5)])
 
-    # Right — 100K/day target config
-    add_text(s, "Target for 100K calls/day", Inches(6.8), Inches(1.55), Inches(6), Inches(0.35),
+    # Right — 5M/day Prod target config
+    add_text(s, "Target for 5M calls/day (Prod)", Inches(6.8), Inches(1.55), Inches(6), Inches(0.35),
              font_size=14, bold=True, color=NAVY)
     target = [
         ["Setting", "Value"],
-        ["Replicas per DC", "2"],
+        ["Peak TPS (5×) / spike (10×)", "~600 / ~1,200"],
+        ["Replicas per DC", "4"],
         ["Number of DCs", "2 (active/active)"],
-        ["Total replicas", "4"],
-        ["Per-replica", "2 vCPU / 4 GB RAM"],
-        ["Total compute footprint", "8 vCPU + 16 GB RAM"],
-        ["Headroom vs 35 TPS worst-case spike", "~23×"],
-        ["Network egress at this volume", "~25 Mbps (well under any 1 Gbps NIC)"],
+        ["Total replicas", "8"],
+        ["Per-replica", "4 vCPU / 8 GB RAM"],
+        ["Total Prod compute footprint", "32 vCPU + 64 GB RAM"],
+        ["Headroom vs 1,200 TPS spike", "~2× (monitor closely)"],
     ]
     make_table(s, target, Inches(6.8), Inches(1.95), Inches(6.2), Inches(2.5),
                header_bg=NAVY, header_fg=WHITE, header_font_size=12, body_font_size=11,
@@ -334,16 +334,70 @@ def slide_sizing(prs):
              Inches(0.5), Inches(4.65), Inches(6), Inches(0.35),
              font_size=14, bold=True, color=NAVY)
     curve = [
-        ["Volume", "Replicas / DC", "Per-replica spec", "Total compute"],
-        ["≤ 100K/day (now)", "2", "2 vCPU / 4 GB", "8 vCPU + 16 GB"],
+        ["Volume", "Replicas / DC", "Per-replica spec", "Total compute (both DCs)"],
+        ["≤ 100K/day", "2", "2 vCPU / 4 GB", "8 vCPU + 16 GB"],
         ["1M/day", "2", "4 vCPU / 8 GB", "16 vCPU + 32 GB"],
-        ["5M/day", "4", "4 vCPU / 8 GB", "32 vCPU + 64 GB"],
+        ["5M/day (current target)", "4", "4 vCPU / 8 GB", "32 vCPU + 64 GB"],
         ["10M/day", "4", "8 vCPU / 16 GB", "64 vCPU + 128 GB"],
+        ["25M/day", "6", "8 vCPU / 16 GB", "96 vCPU + 192 GB"],
         ["50M/day", "8+", "8 vCPU / 16 GB + kernel tuning", "128+ vCPU + 256+ GB"],
     ]
     make_table(s, curve, Inches(0.5), Inches(5.05), Inches(12.5), Inches(2.0),
-               header_bg=BLUE, header_fg=WHITE, header_font_size=12, body_font_size=11,
+               header_bg=BLUE, header_fg=WHITE, header_font_size=12, body_font_size=10,
                col_widths=[Inches(3.0), Inches(2.5), Inches(4.0), Inches(3.0)])
+    return s
+
+
+def slide_env_matrix(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_header(s, "Environments — DEV / QA / Acceptance / Prod",
+               "QA mirrors Prod for accurate load testing — that decision drives roughly half of gateway compute spend")
+
+    # Per-env sizing table
+    data = [
+        ["Setting", "DEV", "QA (= Prod)", "Acceptance / UAT", "PROD"],
+        ["Volume target", "sandbox", "full 5M/day load test", "smoke + integration", "5M/day"],
+        ["DC topology", "single DC", "2 DCs active/active", "2 DCs active/active", "2 DCs active/active"],
+        ["Replicas per DC", "1", "4", "2", "4"],
+        ["Total replicas", "1", "8", "4", "8"],
+        ["Per-replica spec", "2 vCPU / 2 GB", "4 vCPU / 8 GB", "2 vCPU / 4 GB", "4 vCPU / 8 GB"],
+        ["Compute total", "2 + 2", "32 + 64", "8 + 16", "32 + 64"],
+        ["Redis", "1 dev node", "Sentinel 3-node × 2 DCs", "Sentinel 3-node × 1 DC", "Sentinel 3-node × 2 DCs"],
+        ["Service Bus tier (if used)", "Standard", "Premium (load-test data)", "Standard or Premium", "Premium"],
+        ["HA / DR drills validated here?", "No", "Yes — full Prod runbook", "Yes", "Yes (production)"],
+    ]
+    make_table(s, data, Inches(0.3), Inches(1.55), Inches(12.7), Inches(3.6),
+               header_bg=NAVY, header_fg=WHITE, header_font_size=11, body_font_size=10,
+               col_widths=[Inches(2.5), Inches(2.0), Inches(2.6), Inches(2.6), Inches(2.0)])
+
+    # Aggregated footprint callout
+    add_solid_rect(s, Inches(0.3), Inches(5.25), Inches(8.4), Inches(1.85), LIGHT_BLUE)
+    add_text(s, "Aggregated footprint across all 4 environments",
+             Inches(0.5), Inches(5.32), Inches(8.0), Inches(0.35),
+             font_size=14, bold=True, color=NAVY)
+    agg = [
+        ["Resource", "DEV", "QA", "UAT", "PROD", "Total"],
+        ["Gateway replicas", "1", "8", "4", "8", "21"],
+        ["Gateway vCPU", "2", "32", "8", "32", "74"],
+        ["Gateway RAM (GB)", "2", "64", "16", "64", "146"],
+        ["Redis nodes", "1", "6", "3", "6", "16"],
+        ["TOTAL compute (vCPU + GB)", "4 + 4", "44 + 76", "14 + 22", "44 + 76", "~106 vCPU + ~178 GB"],
+    ]
+    make_table(s, agg, Inches(0.5), Inches(5.68), Inches(8.0), Inches(1.4),
+               header_bg=BLUE, header_fg=WHITE, header_font_size=10, body_font_size=9,
+               col_widths=[Inches(2.4), Inches(0.8), Inches(0.8), Inches(0.8), Inches(0.8), Inches(2.4)])
+
+    # Alternative callout
+    add_solid_rect(s, Inches(8.9), Inches(5.25), Inches(4.1), Inches(1.85), LIGHT_GRAY)
+    add_text(s, "Alternative worth considering",
+             Inches(9.05), Inches(5.32), Inches(4.0), Inches(0.35),
+             font_size=13, bold=True, color=NAVY)
+    add_text(s,
+             ["Ephemeral QA — spin up Prod-sized QA only during scheduled load-test windows (e.g. 2 days per release), tear down after.",
+              "Saves ~80% of QA compute cost in exchange for IaC / automation maturity.",
+              "Especially attractive on K8s (kubectl scale --replicas=0) or with Terraform-driven VMs."],
+             Inches(9.05), Inches(5.68), Inches(4.0), Inches(1.35),
+             font_size=10, color=DARK, anchor=MSO_ANCHOR.TOP)
     return s
 
 
@@ -546,6 +600,7 @@ def main():
         slide_modes,
         slide_vm_vs_k8s,
         slide_sizing,
+        slide_env_matrix,
         slide_network,
         slide_dr_postures,
         slide_config_replication,

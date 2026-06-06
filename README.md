@@ -24,8 +24,8 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 
 | File | What it covers |
 |---|---|
-| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | **SaaS-centric 10-slide deck**: title · synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · capacity planning · Azure vs AWS Private Spaces · on-prem deployment · risks & next steps |
-| [presentations/MuleSoft-APIGateway-OnPrem.pptx](presentations/MuleSoft-APIGateway-OnPrem.pptx) | **On-prem-only 10-slide deck**: title · why on-prem · on-prem architecture (embedded diagram) · Connected vs Local mode · VM vs Kubernetes install · hardware sizing curve · components to provision · DR postures with RTO/RPO · config replication mechanics · operational ownership shift + risks + next steps |
+| [presentations/MuleSoft-APIGateway-Architecture.pptx](presentations/MuleSoft-APIGateway-Architecture.pptx) | **SaaS-centric 10-slide deck**: title · synopsis · architecture (embedded diagram) · product choice · Flex Gateway vs Full Mule Runtime · network components to provision · **capacity planning at 5M/day** · Azure vs AWS Private Spaces · on-prem deployment · risks & next steps |
+| [presentations/MuleSoft-APIGateway-OnPrem.pptx](presentations/MuleSoft-APIGateway-OnPrem.pptx) | **On-prem-only 11-slide deck**: title · why on-prem · on-prem architecture (embedded diagram) · Connected vs Local mode · VM vs Kubernetes install · **hardware sizing at 5M/day** · **environment matrix (DEV/QA/UAT/Prod with aggregated footprint)** · components to provision · DR postures with RTO/RPO · config replication mechanics · operational ownership shift + risks + next steps |
 | [presentations/build_pptx.py](presentations/build_pptx.py) | Generator for the SaaS-centric deck |
 | [presentations/build_onprem_pptx.py](presentations/build_onprem_pptx.py) | Generator for the on-prem-only deck |
 | [presentations/diagrams/mulesoft_architecture.py](presentations/diagrams/mulesoft_architecture.py) | Generates the SaaS architecture PNG |
