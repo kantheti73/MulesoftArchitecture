@@ -185,7 +185,7 @@ Before you sign the SOW, verify these in your specific Anypoint org / region:
 
 ## 7. My architect-level take
 
-For your stated requirements (API-edge only, 100K/day, MS stack downstream handles the data path) Flex Gateway is the **right tool, full stop**. The weaknesses in §3 are real but mostly orthogonal to your needs:
+For your stated requirements (API-edge only, **5M/day** target with realistic growth, MS stack downstream handles the data path) Flex Gateway is the **right tool, full stop**. The weaknesses in §3 are real but mostly orthogonal to your needs:
 
 - §3.2 "no orchestration" — you've explicitly delegated that to the MS stack
 - §3.3 "custom WASM" — you may not need any custom policies given the built-in catalog

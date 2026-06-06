@@ -421,7 +421,7 @@ Alarms:
 
 **Premium tier is required** for our citizen-data + private-endpoint requirement. The $700/mo per MU is real money — but the alternative (public Service Bus endpoint with SAS-only auth for PII workloads) is not architecturally acceptable.
 
-For 100K events/day (matching gateway scale from [doc 01 §6](01-api-gateway-architecture.md#6-sizing-for-100k-callsday)), 1 MU is enormously over-sized — 1 MU handles thousands of msgs/sec sustained. Premium minimum is 1 MU; scale up only at sustained > 1000 msgs/sec.
+For 5M events/day (matching the updated gateway scale from [doc 01 §6](01-api-gateway-architecture.md#6-sizing-for-5m-callsday)), peak event rate is ~600 msgs/sec — 1 MU still has 5–10× headroom and is the right Prod starting point. Scale to 2 MU only if you see sustained throttling or move to higher partition counts on Premium. For QA matching Prod, run **2 MU** during scheduled load-test windows (or 1 MU if ephemeral and cheaper).
 
 ---
 

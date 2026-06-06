@@ -207,15 +207,16 @@ flowchart LR
 
 ## 8. Sizing notes specific to Azure (centralus)
 
-For 100K calls/day (per doc 01 §6):
+For **5M calls/day** (current target — per doc 01 §6):
 
 | Setting | Value | Note |
 |---|---|---|
-| Replicas | 2 (across AZ 1 + AZ 2) | `centralus` has 3 AZs — pick any two; failover is automatic |
-| vCore size | 0.1 vCore per replica | Same as AWS sizing — same Flex Gateway under the hood |
-| Auto-scale | min 2 / max 4 | Same |
-| ExpressRoute circuit | 1 Gbps is overkill for 100K/day; share with other Azure traffic | Don't size ER to this workload alone |
-| Egress cost (illustrative) | Trivial at this volume | Re-evaluate at >5M calls/day |
+| Replicas | 4 (spread across AZ 1 + AZ 2) | `centralus` has 3 AZs — pick any two; failover is automatic |
+| vCore size | 0.2 vCore per replica | Same as AWS sizing — same Omni Gateway under the hood |
+| Auto-scale | min 4 / max 8 | Same |
+| ExpressRoute circuit | 1 Gbps comfortable; share with other Azure traffic | 5M calls/day at ~5 KB avg = ~290 GB/day = ~27 Mbps avg, ~80 Mbps peak |
+| Egress cost | ~$250/mo Prod data transfer at this volume | Re-evaluate at >25M calls/day |
+| Service Bus tier (if used) | Premium, 1 MU sufficient for 5M events/day | See [doc 11 §11](11-azure-service-bus-integration.md#11-cost-considerations) |
 
 **Egress note:** Azure egress through ExpressRoute is metered separately from VNet-to-VNet peering. Numbers vary by circuit type and ER tier — ask your Azure account team for the rate card.
 

@@ -346,18 +346,21 @@ Every alert links to a runbook. No runbook → no alert. Forces you to think abo
 
 ---
 
-## 12. Cost notes for 100K calls/day volume
+## 12. Cost notes for 5M calls/day volume
 
 | Signal | Tier | Cost ballpark |
 |---|---|---|
 | Anypoint Monitoring | Included with Titanium subscription | $0 incremental |
-| Splunk indexing | ~50 MB/day of access logs | Lost in the noise of existing Splunk bill |
-| Datadog metrics | ~50 custom metrics × replicas | ~$50/mo |
-| Datadog traces | At sampled rates above, ~30k traces/day | ~$30/mo |
+| Splunk indexing | ~2.5 GB/day of access logs (Prod) | ~$200/mo on top of existing Splunk bill |
+| Datadog metrics | ~80 custom metrics × replicas (Prod) | ~$200/mo |
+| Datadog traces | At sampled rates above, ~1.5M traces/day | ~$400/mo |
 | Synthetic checks | ~5 checks at typical frequency | ~$50/mo |
-| **Total observability uplift** | | **~$150/mo** |
+| **Prod observability uplift** | | **~$850/mo** |
+| **QA mirrors Prod, ~70% data volume** | | **~$600/mo** |
+| **DEV + Acceptance combined** | | **~$200/mo** |
+| **Total across all envs** | | **~$1,650/mo** |
 
-At higher volumes the trace + log costs scale roughly linearly — revisit at 1M+ calls/day.
+At higher volumes (>10M/day) the trace + log costs scale roughly linearly — revisit and consider tail-based sampling tuning + log-shipping batching.
 
 ---
 

@@ -269,62 +269,74 @@ flowchart LR
 
 ---
 
-## 6. Sizing for 100K Calls/Day
+## 6. Sizing for 5M Calls/Day
+
+> **Volume target updated.** Previous version of this doc sized for 100K calls/day. The current planning target is **5M calls/day** with realistic growth headroom. See [doc 09 §6](09-onprem-install.md#6-hardware-sizing) for the full sizing curve and the on-prem-specific per-environment matrix (DEV / QA / Acceptance / Prod).
 
 ### Traffic math
 
 | Metric | Value | Notes |
 |---|---|---|
-| Daily volume | 100,000 calls | Given |
-| Average TPS | **~1.16** | 100K / 86,400 seconds |
-| Business-hour TPS (8h concentration) | **~3.5** | More realistic — most B2B traffic isn't 24×7 |
-| Peak TPS (5× burst over business avg) | **~17** | Reasonable design point |
-| Worst-case spike (10× burst) | **~35** | Headroom for promotions, year-end runs |
-| Payload size assumption | 2–10 KB request, 2–20 KB response | Adjust if you have file/document APIs |
+| Daily volume | 5,000,000 calls | Current target |
+| Average TPS (24h) | **~58** | 5M / 86,400 sec |
+| Business-hour TPS (8h, 70% concentration) | **~120** | More realistic — most B2B isn't 24×7 |
+| Peak TPS (5× business-hour avg) | **~600** | Steady-state peak design point |
+| Worst-case spike (10× business-hour avg) | **~1,200** | Promotions, year-end, partner load events |
+| Payload size assumption | 2–10 KB request, 2–20 KB response | Adjust for file/document APIs |
+| Network egress at peak | ~50–80 Mbps | Trivial for 1 Gbps links |
 
-### Flex Gateway capacity reference
+### Flex / Omni Gateway capacity reference
 
-A **single Flex Gateway replica** at the smallest CH 2.0 size (0.1 vCore) comfortably handles:
-- ~200 TPS sustained for simple proxy with OAuth validation
-- ~500 TPS for API-key-only flows
-- ~50 TPS for heavy JSON threat / schema-validate policies
+A single Flex/Omni Gateway replica at **0.2 vCore** (CH 2.0) or **4 vCPU on-prem** comfortably handles:
+- ~300 TPS sustained with the full external-listener policy chain (JWT + scope + schema + rate limit)
+- ~600 TPS for lighter API-key-only flows
+- ~150 TPS when heavy JSON threat / schema-validate policies dominate
 
-At 35 TPS peak with full policy chain, **one replica is sufficient on capacity grounds**. HA and rolling deploys are what drive replica count, not throughput.
+At 1,200 TPS worst-case spike with the full external policy chain, you need ~4 active replicas distributed across the cluster. HA + rolling-upgrade headroom drives the per-DC count above that minimum.
 
-### Recommended configuration
+### Recommended configuration (SaaS — CH 2.0 Private Space, Prod)
 
 | Setting | Value | Reason |
 |---|---|---|
-| **CH 2.0 deployment size** | **0.1 vCore per replica** | Smallest available; 10× headroom over your peak |
-| **Replica count** | **2** (one per AZ) | HA — survives single-AZ failure; supports zero-downtime deploys |
-| **Auto-scaling** | Enabled, min 2 / max 4 | Cheap insurance against unexpected spikes |
+| **CH 2.0 deployment size** | **0.2 vCore per replica** | Sufficient for ~300 TPS with full policy chain |
+| **Replica count** | **4** (across AZs) | HA + headroom over 1,200 TPS spike |
+| **Auto-scaling** | Enabled, **min 4 / max 8** | Spike absorption |
 | **Scaling trigger** | CPU > 60% over 5 min | Conservative; tune after 30 days of real data |
 | **Anypoint DLB** | 1 (shared across listeners) | Required for custom domain + TLS termination |
 | **Anypoint Security Edge (WAF)** | Enabled on external listener only | Threat protection for partner-facing APIs |
-| **Anypoint Monitoring** | Standard tier | Sufficient for this volume |
+| **Anypoint Monitoring** | Titanium tier | At 5M/day, the Standard tier's analytics retention starts to bite |
+
+For the **on-prem** sizing equivalent (4 replicas per DC × 2 DCs = 8 replicas at 4 vCPU / 8 GB each = 32 vCPU + 64 GB Prod compute), plus the full 4-environment matrix where QA mirrors Prod, see [doc 09 §6.2 + §6.5](09-onprem-install.md#62-for-5m-callsday-current-target).
 
 ### Cost ballpark (USD, list pricing — yours will be lower with enterprise discount)
 
+**Prod only, SaaS path:**
+
 | Line item | Monthly (approx) |
 |---|---|
-| 2× Flex Gateway replicas @ 0.1 vCore | $400–800 |
+| 4× Flex Gateway replicas @ 0.2 vCore | $1,600–3,200 |
 | Private Space base fee | $1,500–3,000 (varies by region) |
 | Dedicated Load Balancer | $250 |
-| Anypoint Monitoring | $200–500 |
-| Direct Connect (1 Gbps, your existing) | already in your network OpEx |
-| Data transfer | ~$50 (low at 100K/day) |
-| **Total (gateway-tier only)** | **~$2,400–4,600/mo** |
+| Anypoint Monitoring (Titanium) | $800–1,500 |
+| ExpressRoute / Direct Connect | existing network OpEx |
+| Data transfer (5M/day, ~5 KB avg) | ~$250 |
+| **Total (Prod gateway-tier only)** | **~$4,400–8,200/mo** |
 
-The numbers above are list. Real cost after enterprise discount + Titanium bundle is usually 30–50% lower. Get a quote from your MuleSoft account team — pricing is heavily negotiated.
+**Add QA mirroring Prod** (per the project's load-testing requirement): roughly **doubles** the gateway compute portion. Plan accordingly.
+
+**On-prem path** (4 environments): see [doc 09 §6.5](09-onprem-install.md#65-environment-matrix--dev--qa--acceptance--prod) — aggregated ~106 vCPU + 178 GB RAM across DEV/QA/UAT/Prod.
+
+Real cost after enterprise discount + Titanium bundle is usually 30–50% lower than list. Get a quote from your MuleSoft account team — pricing is heavily negotiated and per-call vs vCore models have meaningfully different math at 5M/day.
 
 ### When to revisit sizing
 
 | Trigger | Action |
 |---|---|
-| Sustained > 50% CPU on replicas | Scale replicas to 3 OR bump vCore to 0.2 |
-| > 1M calls/day | Re-evaluate — consider a dedicated Anypoint Monitoring tier |
-| > 10M calls/day | Reconsider SaaS vs on-prem trade-off |
-| New regulatory requirement (data residency) | Reconsider topology — may force on-prem or sovereign-region deployment |
+| Sustained > 55% CPU on Prod replicas | Add a 5th replica per DC, or bump to 0.4 vCore |
+| > 10M calls/day sustained | Re-evaluate cluster size; consider sharding by API domain |
+| > 25M calls/day | Consider whether the gateway has become the bottleneck vs backend; profile end-to-end |
+| Recurring 5xx during peak | Check rate-limit policy CPU cost; consider moving to Redis-backed cluster-wide limits with higher budgets per partner |
+| New regulatory requirement (data residency) | Reconsider topology — may force on-prem or sovereign-region |
 
 ---
 

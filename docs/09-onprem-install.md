@@ -278,36 +278,132 @@ flowchart TB
 | OS | RHEL 8.6+ / Ubuntu 22.04 | RHEL 9 / Ubuntu 22.04 LTS |
 | Kernel | 4.18+ | 5.14+ (better TCP performance) |
 
-### 6.2 For 100K calls/day (our target)
+### 6.2 For 5M calls/day (current target)
+
+**Traffic math (updated for 5M/day):**
+
+| Metric | Value | Notes |
+|---|---|---|
+| Daily volume | 5,000,000 calls | Updated target |
+| Average TPS (24h) | ~58 | 5M / 86,400 sec |
+| Business-hour TPS (8h, 70% concentration) | ~120 | More realistic load shape |
+| Peak TPS (5× business-hour avg) | ~600 | Steady-state peak design point |
+| Worst-case spike (10× business-hour avg) | **~1,200** | Promotions, year-end, partner-load events |
+| Payload assumption | 2–10 KB request / 2–20 KB response | Standard JSON APIs |
+| Network egress at peak | ~50–80 Mbps | Well under 1 Gbps NIC |
+
+**Recommended Prod configuration (5M/day):**
 
 | Setting | Value | Rationale |
 |---|---|---|
-| Replicas per DC | **2** | HA + rolling-upgrade headroom |
+| Replicas per DC | **4** | HA + rolling-upgrade headroom + horizontal capacity for 1200 TPS spike |
 | Number of DCs | 2 (active/active) | DR + horizontal capacity |
-| Total replicas | **4** | 2 per DC × 2 DCs |
-| Per-replica spec | **2 vCPU / 4 GB RAM** | Well over 35 TPS worst-case spike |
-| Per-replica storage | 50 GB SSD | Plenty for log rotation |
-| Compute footprint | 8 vCPU + 16 GB RAM total | Across 4 VMs/pods |
-| Network | 1 Gbps per VM is more than enough | Spike upper-bound is ~25 Mbps |
+| Total replicas | **8** | 4 per DC × 2 DCs |
+| Per-replica spec | **4 vCPU / 8 GB RAM** | Each replica comfortably handles 300+ TPS with full policy chain |
+| Per-replica storage | 100 GB SSD | Larger logs at 5M/day (~10 GB/day before rotation) |
+| Compute footprint (Prod) | **32 vCPU + 64 GB RAM total** | Across 8 VMs/pods |
+| Network per VM | 1 Gbps NIC sufficient; 10 Gbps recommended for DC inter-node fabric | |
+| Auto-scale | min 6 / max 12 per DC for K8s | Spike headroom |
+| Auto-scale trigger | CPU > 60% sustained 5 min | |
 
-**Headroom check:** a single 2 vCPU replica sustains 200+ TPS at default config. With 4 replicas the cluster handles ~800 TPS — a 23× cushion over the 35 TPS worst-case spike.
+**Headroom check:** at 4 vCPU per replica, single replica sustains ~300 TPS with full policy chain. 8 replicas → ~2,400 TPS cluster capacity. **2× headroom** over the 1,200 TPS worst-case spike. Tighter than the 23× cushion at 100K/day — actively monitor utilization and plan to add a 5th replica per DC once sustained CPU exceeds 55%.
 
-### 6.3 Sizing curve — when to upsize
+### 6.3 Sizing curve — when to upsize (extended)
 
-| Volume | Replicas / DC | Per-replica | Total compute |
+| Volume | Replicas / DC | Per-replica spec | Total compute (both DCs) |
 |---|---|---|---|
-| ≤ 100K/day (now) | 2 | 2 vCPU / 4 GB | 8 vCPU + 16 GB |
+| ≤ 100K/day | 2 | 2 vCPU / 4 GB | 8 vCPU + 16 GB |
 | 1M/day | 2 | 4 vCPU / 8 GB | 16 vCPU + 32 GB |
-| 5M/day | 4 | 4 vCPU / 8 GB | 32 vCPU + 64 GB |
+| **5M/day (current target)** | **4** | **4 vCPU / 8 GB** | **32 vCPU + 64 GB** |
 | 10M/day | 4 | 8 vCPU / 16 GB | 64 vCPU + 128 GB |
+| 25M/day | 6 | 8 vCPU / 16 GB | 96 vCPU + 192 GB |
 | 50M/day | 8+ | 8 vCPU / 16 GB + kernel tuning | 128+ vCPU + 256+ GB |
 
-### 6.4 K8s-specific extras
+### 6.4 K8s-specific extras (updated for 5M/day)
 
-- **Cluster nodes:** at least 3 worker nodes per cluster (anti-affinity + rolling upgrades)
-- **Per-node minimum:** 4 vCPU + 8 GB RAM (leaves room after K8s overhead)
-- **Persistent volumes:** not strictly required (Flex is mostly stateless), but a local SSD-backed PV for `/var/log/flex-gateway/` smooths log shipping under burst
-- **Ingress controller:** F5 BIG-IP CIS, NGINX Plus, or HAProxy — your platform team's standard
+- **Cluster nodes per DC:** at least **4** worker nodes per DC (was 3) — anti-affinity needs at least 4 nodes to spread 4 pods + leave headroom for HPA bursts
+- **Per-node minimum:** **8 vCPU + 16 GB RAM** (was 4/8 GB) — leaves room for K8s overhead + 1–2 gateway pods + sidecars + ingress controller bursts
+- **Persistent volumes:** local SSD-backed PV for `/var/log/flex-gateway/` is now strongly recommended (not optional) at this volume — log burst during incident is non-trivial
+- **Ingress controller:** F5 BIG-IP CIS preferred (TLS handling + connection pooling). If using NGINX Plus, allocate dedicated nodes for it at this volume; don't co-host with gateway pods.
+- **HPA tuning:** `targetCPUUtilizationPercentage: 60`, `behavior.scaleDown.stabilizationWindowSeconds: 600` (10 min) — at this volume, scale-thrashing during normal traffic dips is real
+
+### 6.5 Environment matrix — DEV / QA / Acceptance / Prod
+
+You're running four environments with the constraint that **QA must replicate Prod** for load testing. This is the right architectural choice for accurate performance validation, but it materially affects total hardware footprint — QA is now half of your gateway compute spend.
+
+```mermaid
+flowchart LR
+    DEV["DEV<br/>functional testing<br/>(1 node, single DC)"]
+    QA["QA<br/>= PROD shape<br/>(load + perf testing)"]
+    UAT["Acceptance / UAT<br/>production-shape, smaller<br/>(business UAT)"]
+    PRD["PROD<br/>5M/day production<br/>(8 replicas)"]
+
+    DEV --> QA --> UAT --> PRD
+```
+
+#### Per-environment sizing
+
+| Setting | DEV | **QA (= Prod)** | Acceptance / UAT | **Prod** |
+|---|---|---|---|---|
+| Volume target | sandbox | full 5M/day load tests | smoke + integration | **5M/day** |
+| DC topology | single DC | 2 DCs active/active | 2 DCs active/active | 2 DCs active/active |
+| Replicas per DC | 1 | **4** | 2 | **4** |
+| Total replicas | **1** | **8** | **4** | **8** |
+| Per-replica spec | 2 vCPU / 2 GB | **4 vCPU / 8 GB** | 2 vCPU / 4 GB | **4 vCPU / 8 GB** |
+| Compute total | 2 vCPU + 2 GB | **32 vCPU + 64 GB** | 8 vCPU + 16 GB | **32 vCPU + 64 GB** |
+| Auto-scale enabled | no | yes (matches Prod) | yes (min 4 / max 6) | yes (min 8 / max 12) |
+| Anypoint env (Connected mode) | `dev` | `qa` | `uat` (or `staging`) | `prd` |
+| Redis cluster | single dev node | Sentinel 3-node × 2 DCs (matches Prod) | Sentinel 3-node × 1 DC | Sentinel 3-node × 2 DCs |
+| Service Bus tier (if used) | Standard (synthetic data) | **Premium** (PII-safe load test data) | Standard or Premium | **Premium** |
+| Anypoint DLB | shared dev DLB | dedicated DLB | dedicated DLB | dedicated DLB |
+| HA / DR drills | none | full Prod DR runbook validated here | yes | yes |
+| Patching cadence | follow Prod -2 weeks | follow Prod -1 week | follow Prod -3 days | scheduled monthly |
+
+#### Why QA mirrors Prod (and the cost of that decision)
+
+| Argument | Detail |
+|---|---|
+| **Load testing validity** | If QA is sized smaller than Prod, load test results don't predict Prod behavior. Latency, throttling, GC patterns, cache behavior all differ at scale. |
+| **DR drill validity** | DR runbook must be testable end-to-end. Quarterly DC failover drill is meaningful only on Prod-shaped QA. |
+| **Pre-prod confidence** | Catch capacity issues, race conditions, and policy interactions before Prod rollout. |
+| **Cost penalty** | Roughly **doubles** the gateway compute footprint vs a downsized QA. At 32 vCPU + 64 GB for Prod, QA matching adds another 32 vCPU + 64 GB. |
+| **Operational complexity** | Two clusters of the same size = twice the patching, monitoring, certificate rotation, etc. Plan ops capacity accordingly. |
+
+**Alternative worth considering:** **ephemeral QA** — spin up Prod-sized QA only during scheduled load-test windows (e.g., 2 days per release), tear down after. Saves ~80% of QA compute cost in exchange for IaC / automation maturity. Especially attractive on K8s (`kubectl scale --replicas=0` between windows) or with Terraform-driven VM provisioning.
+
+#### Aggregated hardware footprint across all 4 environments
+
+| Resource | DEV | QA | UAT | Prod | **Total** |
+|---|---|---|---|---|---|
+| Gateway replicas (VMs / pods) | 1 | 8 | 4 | 8 | **21** |
+| Gateway vCPU | 2 | 32 | 8 | 32 | **74** |
+| Gateway RAM (GB) | 2 | 64 | 16 | 64 | **146** |
+| Redis nodes | 1 | 6 | 3 | 6 | **16** |
+| Redis vCPU | 2 | 12 | 6 | 12 | **32** |
+| Redis RAM (GB) | 2 | 12 | 6 | 12 | **32** |
+| **Total compute vCPU** | 4 | 44 | 14 | 44 | **~106 vCPU** |
+| **Total RAM (GB)** | 4 | 76 | 22 | 76 | **~178 GB** |
+
+That's the real budget number — about **106 vCPU + 178 GB RAM** across 21 gateway replicas and 16 Redis nodes for the full 4-env footprint.
+
+#### Licensing implications
+
+If Omni Gateway is licensed per-vCore (verify with your MuleSoft account team — pricing has shifted between licensing models), Prod + QA = ~88% of license cost across the 4 envs. Specifically ask about:
+- **Non-prod license tier or sandbox discount** — common in enterprise contracts
+- **Ephemeral QA pricing** — whether torn-down replicas count toward billing
+- **Per-environment Anypoint Platform business groups** — keeps audit and access clean
+
+#### Network / connectivity per environment
+
+| Item | Per env requirement |
+|---|---|
+| Public hostname | `api-dev.yourco.com`, `api-qa.yourco.com`, `api-uat.yourco.com`, `api.yourco.com` |
+| Internal hostname | `api-internal-{env}.yourco.local` |
+| TLS certs | One per env from internal CA + one public cert for external (different SANs) |
+| F5 GSLB record | One per env (only Prod + QA need cross-DC; DEV + UAT can be single-DC) |
+| ExpressRoute | **Shared** circuit across envs (cost) but separate VRFs / route tables per env |
+| Private Space CIDR (if cloud-resident) | Non-overlapping per env: 10.50/22 (dev), 10.51/22 (qa), 10.52/22 (uat), 10.53/22 (prd) |
+| FW rules | One ruleset per env (gateway CIDR → backend per env) |
 
 ---
 

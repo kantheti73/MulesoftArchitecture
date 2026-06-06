@@ -6,7 +6,7 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 
 | Doc | What it covers |
 |---|---|
-| [01 — API Gateway Architecture](docs/01-api-gateway-architecture.md) | Scope, product choice (Anypoint Flex Gateway, Connected mode), internal+external dual-listener topology, SaaS vs on-prem trade-offs, private connectivity (Private Space + Transit Gateway + Direct Connect — no public internet), sizing for 100K calls/day |
+| [01 — API Gateway Architecture](docs/01-api-gateway-architecture.md) | Scope, product choice (Anypoint Flex Gateway, Connected mode), internal+external dual-listener topology, SaaS vs on-prem trade-offs, private connectivity (Private Space + Transit Gateway + Direct Connect — no public internet), sizing for **5M calls/day** |
 | [02 — Policies](docs/02-policies.md) | Policy bundles per listener (external/internal/partner), recommended order, SLA tiers, custom policies, anti-patterns |
 | [03 — Identity](docs/03-identity.md) | IdP choice (Entra/Okta/Ping/Cognito), OAuth Client Credentials for partners, mTLS for internal services, Auth Code+PKCE for users, JWKS caching, backend identity propagation |
 | [04 — CI/CD](docs/04-cicd.md) | Spec → policy → publish pipeline; GitHub Actions + Anypoint CLI; dev/stg auto + prd manual gate; drift cleanup; rollback |

@@ -74,27 +74,39 @@ Why this matters specifically: per the same MuleSoft page, an unauthorized user 
 
 ---
 
-## 5. Sizing for our 100K/day workload
+## 5. Sizing for our 5M/day workload
 
-The Redis state volume is small relative to typical Redis use cases, but it's no longer "trivially small" since it includes runtime configurations and request-data cache, not just rate-limit counters:
+> Volume target updated to 5M calls/day (was 100K). At this volume Redis state grows from "trivially small" to "small-but-meaningful" — still nowhere near a Redis sizing problem, but the per-instance spec recommendation moves up one tier.
+
+### Working set at 5M/day
 
 | Item | Size estimate |
 |---|---|
-| 4 SLA tiers × ~100 distinct clients = ~400 rate-limit counter keys | ~60 KB |
-| Runtime configuration cache (policy bundles per API per replica) | ~1–10 MB depending on policy count |
-| Request data cache (response cache, OAuth introspection cache, etc.) | Variable; sized by policy config — typically 10–100 MB |
-| **Total steady-state working set** | **~100 MB safe estimate** |
-| Read/write ops at peak | ~100–200 ops/sec |
+| 4 SLA tiers × ~250 distinct clients = ~1,000 rate-limit counter keys | ~150 KB |
+| Runtime configuration cache (policy bundles per API per replica) | ~5–20 MB depending on policy count |
+| Request data cache (response cache, OAuth introspection cache, etc.) | ~200–500 MB at 5M/day depending on cache TTLs |
+| Idempotency cache (24h window for write APIs / event endpoints) | ~50–100 MB |
+| **Total steady-state working set** | **~500 MB – 1 GB safe estimate** |
+| Read/write ops at peak (matches gateway TPS, both read + write) | ~2,000–2,500 ops/sec |
 
-**The smallest production Redis tier still has 10–100× headroom.** Sizing remains driven by HA topology, not load.
+**The smallest production Redis tier still has 5–10× headroom.** Sizing is still driven by HA topology more than load — but the working set has grown enough that the very-smallest instance tiers are no longer the right pick.
 
-### Recommended instance specs
+### Recommended instance specs (updated for 5M/day)
 
-| Deployment | Per-instance spec |
-|---|---|
-| AWS ElastiCache Redis | `cache.t4g.small` (1.5 GB) or `cache.t4g.medium` (3.2 GB) |
-| Azure Cache for Redis | Basic C1 (1 GB) or Standard C1 (1 GB with replication) |
-| Self-hosted on RHEL/Ubuntu | 2 vCPU / 2 GB RAM / 20 GB SSD per node, 3 nodes minimum |
+| Deployment | Per-instance spec | Notes |
+|---|---|---|
+| AWS ElastiCache Redis | **`cache.t4g.medium`** (3.2 GB) — or `cache.m6g.large` (6.4 GB) for headroom | medium is the right floor; small was fine at 100K/day, no longer |
+| Azure Cache for Redis | **Standard C2** (2.5 GB) — or Premium P1 (6 GB) for VNet + persistence | C1 was fine at 100K/day; bump one tier |
+| Self-hosted on RHEL/Ubuntu | **2 vCPU / 4 GB RAM** / 40 GB SSD per node, 3 nodes minimum (was 2 GB RAM) | 4 GB leaves room for OS + Redis + tooling without thrashing |
+
+### Per-environment Redis sizing (matches the 4-env matrix in [doc 09 §6.5](09-onprem-install.md#65-environment-matrix--dev--qa--acceptance--prod))
+
+| Env | Redis topology | Per-node spec | Total nodes | Notes |
+|---|---|---|---|---|
+| **DEV** | single node, no Sentinel | 1 vCPU / 1 GB | 1 | Dev-only; data loss tolerable |
+| **QA (= Prod)** | Sentinel 3-node per DC × 2 DCs | 2 vCPU / 4 GB | **6** | Must mirror Prod for accurate load testing |
+| **Acceptance / UAT** | Sentinel 3-node, single DC | 2 vCPU / 2 GB | **3** | Production-shape HA, smaller capacity |
+| **PROD** | Sentinel 3-node per DC × 2 DCs | **2 vCPU / 4 GB** | **6** | Per §6 deployment recommendations |
 
 ---
 
