@@ -32,7 +32,7 @@ You're already running an SSP project with an IdP. Reuse it.
 
 | Candidate IdP | When to choose | Notes |
 |---|---|---|
-| **Okta** | Most common enterprise choice; cleanest OIDC; native RFC 8693 token exchange | Recommended if you're greenfield |
+| **Okta** | Most common enterprise choice; cleanest OIDC; native RFC 8693 token exchange | Recommended if you're greenfield — see **[doc 21](21-okta-integration.md)** for implementation specifics |
 | **Azure AD / Entra ID** | Microsoft-stack shop, already paying for E3/E5 | Most likely fit given your MS stack downstream |
 | **PingFederate** | Banking / regulated; on-prem deployment available | Strong feature parity with Okta |
 | **AWS Cognito** | You already use it for the AWS SSP work | Cheap and simple, but **no native RFC 8693** — limits future token-exchange options |
@@ -235,3 +235,4 @@ If your partners and your employees live in different IdPs (common — Okta for 
 - [01 — API Gateway Architecture](01-api-gateway-architecture.md)
 - [02 — Policies](02-policies.md)
 - [04 — CI/CD](04-cicd.md)
+- **[21 — Okta Integration Specifics](21-okta-integration.md)** — when Okta is the chosen IdP, this is the implementation companion to this doc (custom authz server setup, JWKS URL gotchas, claim mapping, Terraform snippets, common errors)
