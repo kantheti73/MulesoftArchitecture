@@ -1,0 +1,158 @@
+# MuleSoft Omni Gateway Custom Policy Manifest
+#
+# This manifest declares the policy to Anypoint Exchange / API Manager so it
+# can be attached to APIs alongside the built-in policy catalog.
+#
+# Publish to Exchange via deploy-policy.ps1 (which calls anypoint-cli-v4).
+
+id: payload-capture-wasm
+name: Payload Capture to Service Bus
+version: 0.1.0
+groupId: <YOUR_BUSINESS_GROUP_ID>          # replace at deploy time
+description: |
+  Captures every API call's request payload + headers (and optionally
+  response) and publishes them to an Azure Service Bus queue
+  asynchronously. Fire-and-forget; never blocks the request path.
+  Includes PII redaction, payload size limits, and configurable sampling.
+
+  Built as an Envoy WASM filter for Anypoint Omni Gateway. See the README
+  in this directory for build + operational details.
+
+# Where this policy can be applied
+appliesTo:
+  - api-instance        # attach to a specific API instance
+  - environment         # OR org-wide as an automatic policy
+
+# Runtime requirements
+runtime:
+  gateway:
+    - flex             # WASM filters are Flex/Omni-only (no Mule runtime support)
+  minVersion: "1.4.0"  # WASM SDK version compatibility — confirm against your Omni release
+
+# Configurable parameters surfaced in API Manager UI
+configurationData:
+  - propertyName: sb_namespace_host
+    name: Azure Service Bus host
+    description: |
+      Service Bus namespace endpoint, e.g. "myorg-bus.servicebus.windows.net".
+      Do NOT include https:// or the queue path.
+    type: string
+    required: true
+
+  - propertyName: sb_queue_name
+    name: Service Bus queue name
+    description: Target queue (or topic) for captured payloads
+    type: string
+    required: true
+
+  - propertyName: sb_sas_authorization_header
+    name: SAS Authorization header
+    description: |
+      Pre-built Authorization header value, e.g.
+      "SharedAccessSignature sr=...&sig=...&se=...&skn=..."
+      Generate from the Send-only SAS policy on the queue. Pull from
+      Vault / Anypoint Secure Properties — never inline.
+    type: string
+    sensitive: true
+    required: true
+
+  - propertyName: sb_http_cluster_name
+    name: Envoy upstream cluster name for Service Bus
+    description: |
+      Name of the Envoy upstream cluster that resolves to the Service Bus
+      REST endpoint. Configured in the Flex Gateway upstream config.
+    type: string
+    required: true
+    defaultValue: "service-bus-rest-cluster"
+
+  - propertyName: sample_rate_percent
+    name: Sample rate (%)
+    description: |
+      Percentage of requests to capture (0-100). 10 is a reasonable
+      default for high-volume APIs; 100 for low-volume audit-critical
+      APIs. Sampling decision is per-request, uniform random.
+    type: int
+    required: false
+    defaultValue: 10
+    validation:
+      min: 0
+      max: 100
+
+  - propertyName: max_payload_bytes
+    name: Max payload bytes
+    description: |
+      Truncate request/response bodies above this size. Service Bus
+      Standard tier accepts 256 KB messages; Premium accepts 1 MB.
+      Stay well below to allow envelope + headers overhead.
+    type: int
+    required: false
+    defaultValue: 65536      # 64 KB
+
+  - propertyName: capture_response
+    name: Capture response body too
+    description: |
+      If true, also capture the backend response body. Doubles the
+      capture cost; only enable for APIs where response payload matters
+      (audit, replay). Default false.
+    type: boolean
+    required: false
+    defaultValue: false
+
+  - propertyName: redact_body_fields
+    name: Body fields to redact (JSON pointer paths)
+    description: |
+      List of JSON pointer paths to redact before publish. Example:
+      ["/ssn", "/dateOfBirth", "/account/number"]. Non-JSON bodies are
+      passed through as-is. See docs/07-data-protection.md for the PII
+      deny-list.
+    type: array
+    items: string
+    required: false
+    defaultValue: []
+
+  - propertyName: capture_header_allowlist
+    name: Header allowlist
+    description: |
+      Only these header names (case-insensitive) are captured. Default
+      set excludes Authorization, Cookie, and other PII-bearing headers
+      per docs/02-policies.md.
+    type: array
+    items: string
+    required: false
+    defaultValue:
+      - content-type
+      - accept
+      - x-correlation-id
+      - x-request-id
+      - traceparent
+
+  - propertyName: timeout_ms
+    name: Service Bus HTTP timeout (ms)
+    description: HTTP call timeout for the publish attempt. Fire-and-forget on failure.
+    type: int
+    required: false
+    defaultValue: 5000
+
+# Required Flex Gateway upstream cluster (declared so users know what to
+# provision in the gateway runtime config alongside the policy attachment)
+requiredUpstreams:
+  - name: service-bus-rest-cluster
+    purpose: |
+      HTTPS connection to Azure Service Bus REST endpoint. Configure in
+      Flex Gateway upstream config to point at sb_namespace_host:443 with
+      TLS verification enabled.
+
+# Implementation pointer (Exchange UI shows this for transparency)
+implementation:
+  type: wasm
+  binary: payload-capture-wasm.wasm    # produced by `cargo build --release --target wasm32-wasi`
+  sourceRepo: https://github.com/kantheti73/MulesoftArchitecture/tree/main/code/policies/payload-capture-wasm
+
+# Tags for discoverability in Exchange
+tags:
+  - custom
+  - wasm
+  - capture
+  - audit
+  - service-bus
+  - async

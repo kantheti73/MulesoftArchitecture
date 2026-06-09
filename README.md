@@ -28,6 +28,13 @@ Architecture and reference materials for MuleSoft-based integration designs — 
 | [20 — RACI Matrix](docs/20-raci-matrix.md) | Who is Responsible / Accountable / Consulted / Informed for every activity across all 6 phases. 16 stakeholder codes (6 consultant + 10 client + external). Per-phase RACI tables: Phase 1 Discovery / Phase 2 Foundation (broken into 6 sub-workstreams) / Phase 3 per-API onboarding / Phase 4 Hypercare / Steady-state / Annual recurring. RACI smells to watch for. RACI as a SOW artifact. How to use the matrix (kickoff, status reviews, quarterly re-baselining as KT transfers accountability to client). |
 | [21 — Okta Integration Specifics](docs/21-okta-integration.md) | Implementation companion to doc 03 when Okta is the chosen IdP. Licensing prerequisites (API Access Management is the #1 surprise). Custom Authorization Server setup (audience / scopes / claims / access policies). URL matrix (custom-authz-server URLs vs org-level — easy-miss). Token shape from Okta with `scp` vs `scope` callout. Per-flow configuration (Client Credentials, Auth Code + PKCE). Omni Gateway JWT policy config with 3 Okta-specific fields. Claim mapping (tier / tenant / azp custom claims). JWKS rate-limit handling. Terraform snippet. Testing approach. 9-row common errors table. Migration from another IdP (dual-trust → cutover → decommission). Operational considerations. License delta in 4 scenarios. 12-item Okta admin checklist for Phase 2 kickoff. |
 
+## Code
+
+| Path | Purpose |
+|---|---|
+| [`code/`](code/) | Production-bound code artifacts (custom policies, sample orchestrators, ops scripts) — see `code/README.md` for the index |
+| [`code/policies/payload-capture-wasm/`](code/policies/payload-capture-wasm/) | **Custom Omni Gateway WASM policy** (Rust) that captures every API call's payload + headers and publishes to an Azure Service Bus queue asynchronously. Includes PII redaction, sampling, size caps, and CloudEvents-shaped envelope. With Cargo project, policy manifest YAML, deploy-to-Exchange PowerShell script, unit tests, integration test plan, and operational README. |
+
 ## Presentations
 
 | File | What it covers |

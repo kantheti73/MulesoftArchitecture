@@ -1,0 +1,16 @@
+# Rust build artifacts
+target/
+Cargo.lock         # libraries usually commit this; for a WASM filter shipped as a binary, optional
+**/*.rs.bk
+
+# WASM build output (the .wasm goes to Anypoint Exchange, not Git)
+*.wasm
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
