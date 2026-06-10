@@ -1,0 +1,59 @@
+# Example configuration for the Redis Sync Daemon.
+#
+# Mount or copy to /etc/redis-sync-daemon/config.yaml in deployment.
+# Yellow-flag fields are placeholders — replace per environment.
+
+local:
+  redis_endpoints:
+    - host: redis-dc1-1.internal
+      port: 6380
+    - host: redis-dc1-2.internal
+      port: 6380
+    - host: redis-dc1-3.internal
+      port: 6380
+  sentinel_master: omni-gw-shared
+  auth_password_secret: vault://secret/redis/dc1-auth
+  tls:
+    enabled: true
+    ca_cert_path: /etc/ssl/internal-ca.crt
+    client_cert_path: /etc/ssl/redis-sync-dc1.crt
+    client_key_path: /etc/ssl/redis-sync-dc1.key
+
+# Each peer DC's sync daemon endpoint (mTLS)
+peers:
+  - name: dc2
+    endpoint: https://redis-sync-dc2.internal:8443
+    mtls:
+      ca_cert_path: /etc/ssl/internal-ca.crt
+      client_cert_path: /etc/ssl/redis-sync-dc1.crt
+      client_key_path: /etc/ssl/redis-sync-dc1.key
+    timeout_ms: 2000
+
+# Patterns control which keys get replicated and how
+sync:
+  patterns:
+    # Idempotency keys: SETNX semantics, preserve TTL
+    - prefix: "idem:"
+      semantics: "setnx"
+      ttl_preserve: true
+
+    # Rate-limit counters: INCRBY-delta semantics on a 10s aggregation cycle
+    - prefix: "rl:"
+      semantics: "counter-delta"
+      aggregation_interval_seconds: 10
+      ttl_preserve: true
+
+  # Redis must be configured with:
+  #   CONFIG SET notify-keyspace-events Ex$g
+  # so SET / SETEX / EXPIRED events flow on this channel
+  keyspace_channel: "__keyspace@0__:*"
+
+server:
+  listen_addr: "0.0.0.0:8443"   # peer-to-peer sync (mTLS HTTPS)
+  metrics_addr: "0.0.0.0:9090"  # Prometheus scrape target
+  health_addr: "0.0.0.0:8080"   # /healthz, /readyz
+
+observability:
+  prometheus_metrics: true
+  log_level: info
+  audit_log_path: /var/log/redis-sync/audit.log

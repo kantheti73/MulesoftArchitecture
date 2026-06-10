@@ -7,6 +7,7 @@ This is where actual implementation artifacts live (as opposed to architecture d
 | Path | Purpose | Status |
 |---|---|---|
 | [`policies/payload-capture-wasm/`](policies/payload-capture-wasm/) | Custom Omni Gateway policy that captures every API call payload + headers and publishes to an Azure Service Bus queue (fire-and-forget, async, with PII redaction + sampling) | Reference implementation — needs build + integration test |
+| [`services/redis-sync-daemon/`](services/redis-sync-daemon/) | Go daemon for cross-DC Redis sync without Redis Enterprise (selectively replicates idempotency keys + rate-limit counter deltas via mTLS HTTPS between per-DC Sentinel clusters) | Scaffold — needs Vault SDK wire-up, integration tests, chaos testing |
 
 ## Why a `code/` folder
 

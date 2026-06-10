@@ -75,13 +75,14 @@ For each assumption: **the assumption · the basis · what breaks if it's wrong 
 | **What breaks if wrong** | If working set exceeds Redis node memory in future, need to move to Cluster — different connection logic, different ops model |
 | **Verify** | Memory headroom check every quarter; trigger Cluster discussion at 50% memory utilization |
 
-### A8. Active/passive Redis across DCs (not active/active)
+### A8. Per-DC active Redis Sentinel + custom sync daemon (revised 2026-06-09)
 
 | | |
 |---|---|
-| **Basis** | OSS Redis can't safely do active/active multi-master across DCs; only Redis Enterprise CRDTs handle that |
-| **What breaks if wrong** | During DR cutover (DC-1 → DC-2), rate-limit counters reset (partners get a brief over-quota window); some idempotency cache entries lost |
-| **Verify** | Document this in partner SLA explicitly; or budget for Redis Enterprise (~5–10× OSS cost — get quote) |
+| **Basis** | OSS Redis can't safely do active/active multi-master across DCs natively. Three viable shapes: (a) per-DC scope with SLA wording change, (b) active/passive, or (c) per-DC active + selective custom sync daemon for idempotency keys + rate-limit counter deltas only. We're choosing (c) per [doc 22](22-redis-cross-dc-sync.md) to avoid Redis Enterprise license. |
+| **What breaks if wrong** | Sync daemon failure → idempotency keys diverge between DCs (duplicate-write risk on cross-DC retry); rate-limit counter drift up to 2× during partition |
+| **Verify** | Sync daemon SLI: 1–2s lag for idempotency keys, 5–10s for counters. Quarterly partition drill validates auto-heal behavior. Document drift bounds in partner SLA. |
+| **Hidden assumption inside this** | Eventually consistent semantics are acceptable for our workload. Strong cross-DC consistency would still require Redis Enterprise. |
 
 ### A9. Same Redis cluster supports both Connected-mode runtime config cache AND distributed policy state
 
@@ -177,13 +178,14 @@ For each assumption: **the assumption · the basis · what breaks if it's wrong 
 | **Verify** | Confirm field name + behavior with MuleSoft account team — Omni Gateway naming has shifted between minor versions |
 | **Critical** | **This is the single most important Redis-config switch to get right** |
 
-### A19. It's acceptable for rate-limit counters to reset during DR cutover
+### A19. It's acceptable for rate-limit counters to drift up to 2× during cross-DC partition (revised 2026-06-09)
 
 | | |
 |---|---|
-| **Basis** | Active/passive Redis across DCs (A8) implies counter reset on failover |
-| **What breaks if wrong** | If partner SLAs require seamless rate-limit continuity, Redis Enterprise is required |
-| **Verify** | Legal/contract review of partner SLA wording before go-live |
+| **Basis** | With per-DC Redis + sync daemon (A8 revised), partitions cause each DC to enforce local limits independently; effective global limit can briefly reach 2× the configured value. On reconnect, counters re-baseline. |
+| **What breaks if wrong** | If partner SLAs require strict global limit enforcement at all times (incl. during partition), the custom sync daemon design is insufficient — Redis Enterprise required |
+| **Verify** | Legal/contract review of partner SLA wording before go-live; document the bounded-drift semantics explicitly |
+| **Note** | This is a softer assumption than the prior "reset during cutover" — drift is bounded and auto-heals, vs the harder break of full counter reset. Most partners accept it once explained. |
 
 ---
 
@@ -246,13 +248,14 @@ For each assumption: **the assumption · the basis · what breaks if it's wrong 
 
 ## 9. License / cost assumptions
 
-### A26. OSS Redis is sufficient for our DR posture (active/passive multi-DC)
+### A26. OSS Redis + custom sync daemon is sufficient for our DR posture (revised 2026-06-09)
 
 | | |
 |---|---|
-| **Basis** | We're accepting the rate-limit reset during DR (A19) |
-| **What breaks if wrong** | If a future SLA mandates active/active counter continuity, must license Redis Enterprise |
-| **Verify** | Confirm with product owners whether brief counter reset during DC failover is acceptable |
+| **Basis** | Per A8 revised, we deploy per-DC OSS Sentinel + custom sync daemon ([doc 22](22-redis-cross-dc-sync.md)) for selective cross-DC replication. Avoids Redis Enterprise license. |
+| **What breaks if wrong** | If sync daemon proves unmaintainable in production OR partner SLA contractually requires strong cross-DC consistency, fall back to Redis Enterprise. Carry ~$15-25K/yr+ as budget contingency. |
+| **Verify** | Quarterly review of sync daemon SLIs (lag, drop rate, partition recovery time); annual review of "should we have just paid for Enterprise" question |
+| **Cost shape** | One-time build ~276 hrs; ongoing maintenance ~76 hrs/yr (per doc 22 §7). Breaks even vs Enterprise list pricing at ~Year 2-3 depending on consultant rates. |
 
 ### A27. Redis runs on existing VM capacity (no incremental hardware cost)
 

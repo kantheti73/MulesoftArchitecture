@@ -134,12 +134,13 @@ flowchart TB
 
 ### Honest framing for OSS-only shops
 
-If Redis Enterprise budget isn't available for true active/active multi-DC, **the gateway design has to accept one of two trade-offs**:
+If Redis Enterprise budget isn't available for true active/active multi-DC, **the gateway design has to accept one of three trade-offs**:
 
 1. **Per-DC Redis scope** — rate limits and config caches scoped per DC. Gold partner = 1000/min per DC = 2000/min globally. **Document this explicitly in your partner SLA.**
 2. **Active/passive Redis with cross-DC async replica** — full RTO < 60 s requires LB reconfiguration during DR cutover; rate-limit counters reset on failover. Brief partner-visible SLA reset window.
+3. **Per-DC Redis Sentinel + custom sync daemon** — selectively replicate only the data classes that need cross-DC consistency (idempotency keys + rate-limit counter deltas). Eventually consistent (1–10s lag); avoids Enterprise license; carries ~276 hrs build + ~76 hrs/year maintenance cost. **Full design and trade-offs in [doc 22 — Cross-DC Redis Sync without Redis Enterprise](22-redis-cross-dc-sync.md)** + reference Go daemon in [`code/services/redis-sync-daemon/`](../code/services/redis-sync-daemon/).
 
-Neither is wrong — both are common in production. The wrong move is shipping multi-DC active/active without thinking through which Redis topology you're committing to.
+None of the three is wrong — all are common in production. The wrong move is shipping multi-DC active/active without thinking through which Redis topology you're committing to.
 
 ---
 
